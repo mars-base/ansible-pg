@@ -1,20 +1,48 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # tasks file for roles/pgdog
-- name: create user
+
+- name: Build pgdog_instances from legacy variables
+  set_fact:
+    _pgdog_instances:
+      - name: default
+        port: "{{ pgdog_port }}"
+        databases: "{{ pgdog_databases }}"
+        users: "{{ pgdog_users }}"
+        sharded_tables: "{{ pgdog_sharded_tables }}"
+  when: pgdog_instances | length == 0
+
+- name: Use configured pgdog_instances
+  set_fact:
+    _pgdog_instances: "{{ pgdog_instances }}"
+  when: pgdog_instances | length > 0
+
+- name: Create pgdog user
   ansible.builtin.user:
     name: pgdog
     shell: /usr/sbin/nologin
 
-- name: Create directory
+- name: Create instance directories
   file:
-    path: "{{ item }}"
+    path: "{{ pgdog_dir }}/{{ item.name }}"
     state: directory
     owner: pgdog
     group: pgdog
-  loop:
-    - "{{ pgdog_dir }}"
-    - "{{ pgdog_dir }}/logs"
+    mode: "0755"
+  loop: "{{ _pgdog_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Create instance log directories
+  file:
+    path: "{{ pgdog_dir }}/{{ item.name }}/logs"
+    state: directory
+    owner: pgdog
+    group: pgdog
+    mode: "0755"
+  loop: "{{ _pgdog_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
 
 - name: Pull pgdog image
   docker_image:
@@ -22,47 +50,79 @@
     source: pull
     tag: "{{ pgdog_version }}"
 
-- name: Create pgdog config file
+- name: Create pgdog config files
   template:
-    src: "{{ item }}"
-    dest: "{{ pgdog_dir }}/{{ item }}"
-  loop:
-    - "pgdog.toml"
-    - "users.toml"
-  notify: "Restart pgdog"
-  tags: ["config"]
-
-- name: create supervisor conf
-  template:
-    src: "supervisor/pgdog.conf.j2"
-    dest: "/etc/supervisor/conf.d/pgdog.conf"
+    src: "pgdog.toml"
+    dest: "{{ pgdog_dir }}/{{ item.name }}/pgdog.toml"
     owner: pgdog
     group: pgdog
     mode: "0644"
+  loop: "{{ _pgdog_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: "Restart pgdog instances"
+  tags: ["config"]
+
+- name: Create pgdog users files
+  template:
+    src: "users.toml"
+    dest: "{{ pgdog_dir }}/{{ item.name }}/users.toml"
+    owner: pgdog
+    group: pgdog
+    mode: "0644"
+  loop: "{{ _pgdog_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: "Restart pgdog instances"
+  tags: ["config"]
+
+- name: Create supervisor configs
+  template:
+    src: "supervisor/pgdog.conf.j2"
+    dest: "/etc/supervisor/conf.d/pgdog-{{ item.name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
     backup: no
-  notify: "Restart pgdog"
+  loop: "{{ _pgdog_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: "Restart pgdog instances"
 
-- name: reread and update supervisor
+- name: Reread and update supervisor
   shell: >
-    supervisorctl reread && \
-    supervisorctl update && \
-    supervisorctl start pgdog
+    supervisorctl reread &&
+    supervisorctl update
 
-- name: Wait for pgdog to start
+- name: Start pgdog instances
+  shell: >
+    supervisorctl start pgdog-{{ item.name }} || true
+  loop: "{{ _pgdog_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Wait for pgdog instances to start
   wait_for:
     host: "{{ pgdog_host }}"
-    port: "{{ pgdog_port }}"
+    port: "{{ item.port }}"
     timeout: 30
+  loop: "{{ _pgdog_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
 
-- name: Tips for connecting to shard databases
+- name: Tips for connecting to pgdog instances
   debug:
     msg: |
-      Connect to shard databases:
-      PGPASSWORD=[...] psql -h {{ pgdog_host }} -p {{ pgdog_port }} -U {{ pgdog_users[0].name }} -d {{ pgdog_databases[0].name }} -c 'select * from users ;'
-      Metric endpoint: http://{{ pgdog_host }}:{{ pgdog_openmetrics_port }}/metrics
+      pgdog instance '{{ item.name }}':
+        Connect: PGPASSWORD=[...] psql -h {{ pgdog_host }} -p {{ item.port }} -U {{ item.users[0].name }} -d {{ item.databases[0].name }}
+        Metrics: http://{{ pgdog_host }}:{{ pgdog_openmetrics_port | int + ansible_loop.index0 }}/metrics
+  loop: "{{ _pgdog_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+    extended: yes
 
-- name: Show pgdog databases
+- name: Show pgdog instances
   debug:
     msg: |
-      pgdog databases:
-      {{ pgdog_databases | to_nice_yaml }}
+      pgdog instances:
+      {{ _pgdog_instances | to_nice_yaml }}

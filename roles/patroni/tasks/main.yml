@@ -6,13 +6,13 @@
   register: _lsb_release_code
   failed_when: _lsb_release_code.rc != 0 or _lsb_release_code.stdout == ""
 
-- name: Install pig apt source
+- name: Install pigsty pgsql apt source
   ansible.builtin.copy:
     dest: /etc/apt/sources.list.d/pgsql.list
     content: |
       deb [trusted=yes] https://repo.pigsty.io/apt/pgsql/{{ _lsb_release_code.stdout }} {{ _lsb_release_code.stdout }} main
-      deb [trusted=yes] https://repo.pigsty.io/apt/infra/ generic main
     mode: "0644"
+
 
 - name: Update apt cache
   ansible.builtin.apt:

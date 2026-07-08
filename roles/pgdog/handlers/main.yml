@@ -1,6 +1,10 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # handlers file for roles/pgdog
-- name: Restart pgdog
+- name: Restart pgdog instances
   shell: >
-    supervisorctl restart pgdog
+    supervisorctl restart pgdog-{{ item.name }} || true
+  loop: "{{ _pgdog_instances | default(pgdog_instances) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: _pgdog_instances is defined or pgdog_instances | length > 0

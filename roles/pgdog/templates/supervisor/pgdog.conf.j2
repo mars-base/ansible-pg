@@ -1,4 +1,4 @@
-[program:pgdog]
+[program:pgdog-{{ item.name }}]
 autorestart = true
 autostart = true
 command = bash -c 'exec /usr/bin/docker run \
@@ -7,20 +7,20 @@ command = bash -c 'exec /usr/bin/docker run \
   --user $(id -u pgdog):$(id -g pgdog) \
   -v /etc/localtime:/etc/localtime:ro \
   -v /etc/timezone:/etc/timezone:ro \
-  -v {{ pgdog_dir }}:/pgdog \
+  -v {{ pgdog_dir }}/{{ item.name }}:/pgdog \
   --workdir / \
-  --name pgdog \
+  --name pgdog-{{ item.name }} \
   ghcr.io/pgdogdev/pgdog:{{ pgdog_version }} \
   pgdog \
   -c /pgdog/pgdog.toml \
   -u /pgdog/users.toml'
-directory = {{ pgdog_dir }}
+directory = {{ pgdog_dir }}/{{ item.name }}
 environment =
 redirect_stderr = false
-stderr_logfile = {{ pgdog_dir }}/logs/pgdog-err.log
+stderr_logfile = {{ pgdog_dir }}/{{ item.name }}/logs/pgdog-err.log
 stderr_logfile_maxbytes= 20MB
 stderr_logfile_backups = 5
-stdout_logfile = {{ pgdog_dir }}/logs/pgdog-out.log
+stdout_logfile = {{ pgdog_dir }}/{{ item.name }}/logs/pgdog-out.log
 stdout_logfile_maxbytes = 50MB
 stdout_logfile_backups = 5
 user = root

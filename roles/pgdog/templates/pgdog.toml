@@ -1,21 +1,24 @@
 [general]
 host = "{{ pgdog_host }}"
-port = {{ pgdog_port }}
+port = {{ item.port }}
 workers = 2
 default_pool_size = 10
 pooler_mode = "transaction"
-openmetrics_port = {{ pgdog_openmetrics_port }}
+openmetrics_port = {{ item.openmetrics_port | default(pgdog_openmetrics_port) }}
 
-{% for db in pgdog_databases %}
+{% for db in item.databases %}
 [[databases]]
 name = "{{ db.name }}"
 host = "{{ db.host }}"
 port = {{ db.port }}
 database_name = "{{ db.database_name }}"
 shard = {{ db.shard }}
+{% if db.role is defined %}
+role = "{{ db.role }}"
+{% endif %}
 
 {% endfor %}
-{% for table in pgdog_sharded_tables %}
+{% for table in item.sharded_tables | default([]) %}
 [[sharded_tables]]
 database = "{{ table.database }}"
 name = "{{ table.name }}"

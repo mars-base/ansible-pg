@@ -6,24 +6,33 @@
   register: _lsb_release_code
   failed_when: _lsb_release_code.rc != 0 or _lsb_release_code.stdout == ""
 
-- name: Install pig apt source
+- name: Install pigsty pgsql apt source
   ansible.builtin.copy:
     dest: /etc/apt/sources.list.d/pgsql.list
     content: |
       deb [trusted=yes] https://repo.pigsty.io/apt/pgsql/{{ _lsb_release_code.stdout }} {{ _lsb_release_code.stdout }} main
-      deb [trusted=yes] https://repo.pigsty.io/apt/infra/ generic main
     mode: "0644"
+
 
 - name: Update apt cache
   apt:
     update_cache: yes
+  register: _apt_update
+  ignore_errors: true
+  tags: [repo]
+
+- name: Check if pig is installed
+  command: which pig
+  register: _pig_check
+  changed_when: false
+  failed_when: false
 
 - name: Install pig tool
   vars:
     _pkg_url: "{{ pig_tool }}"
   apt:
     deb: "{{ _pkg_url }}"
-    state: present
+  when: _pig_check.rc != 0
 
 - name: Install postgresql extensions
   shell: |

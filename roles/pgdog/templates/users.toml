@@ -1,7 +1,10 @@
-{% for user in pgdog_users %}
+{% for user in item.users %}
 [[users]]
 name = "{{ user.name }}"
 password = "{{ user.password }}"
 database = "{{ user.database }}"
+{% if user.replication_mode is defined %}
+replication_mode = {{ user.replication_mode | lower }}
+{% endif %}
 
 {% endfor %}
