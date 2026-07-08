@@ -1,0 +1,160 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/patroni-pg
+- name: Test postgres connection
+  shell: >
+    PGPASSWORD={{postgres_admin_password}} \
+    psql -h "{{ postgres_host | default('localhost') }}" \
+      -p "{{ postgres_port | default(5432) }}" \
+      -U "{{ postgres_admin }}" \
+      -d postgres \
+      -c "SELECT version();"
+  args:
+    executable: /bin/bash
+  register: _test
+  changed_when: true
+  failed_when: false
+  tags: [test]
+
+- name: Show test result
+  debug:
+    msg: "Postgres connection test result:\n{{ _test.stdout }}"
+  tags: [test]
+
+- name: Fail if postgres connection test failed
+  fail:
+    msg: "Postgres connection test failed: {{ _test.stderr }}"
+  when: _test.rc != 0
+  tags: [test]
+
+- name: Select the primary node by patroni api
+  uri:
+    url: "http://{{ ansible_default_ipv4.address }}:8008/"
+    method: GET
+    return_content: true
+    status_code: 200
+    body_format: json
+  register: _patroni_primary
+  changed_when: true
+  failed_when: false
+  tags: [test]
+
+- name: Show the primary node info
+  debug:
+    msg: "Patroni primary node info:\nhost:{{ _patroni_primary.json.patroni.name }}\nrole:{{ _patroni_primary.json.role }}"
+  when: _patroni_primary.json.role == "primary"
+  tags: [test]
+
+# 在primary节点上创建数据库、用户、分配权限
+- block:
+
+  - name: Create postgres database
+    community.postgresql.postgresql_db:
+      name: "{{item}}"
+      encoding: "UTF-8"
+      state: present
+      login_user: "{{ postgres_admin }}"
+      login_password: "{{ postgres_admin_password }}"
+      login_host: "{{ postgres_host | default('localhost') }}"
+      login_port: "{{ postgres_port | default(5432) }}"
+    loop: "{{ postgres_dbs }}"
+
+  - name: Create postgres user
+    community.postgresql.postgresql_user:
+      name: "{{ item.name }}"
+      password: "{{ item.password }}"
+      login_user: "{{ postgres_admin }}"
+      login_password: "{{ postgres_admin_password }}"
+      login_host: "{{ postgres_host | default('localhost') }}"
+      login_port: "{{ postgres_port | default(5432) }}"
+      login_db: postgres
+    loop: "{{ postgres_users }}"
+
+  - name: Create schema
+    community.postgresql.postgresql_schema:
+      login_db: "{{ item.db }}"
+      name: "{{ item.schema }}"
+      state: present
+      login_user: "{{ postgres_admin }}"
+      login_password: "{{ postgres_admin_password }}"
+      login_host: "{{ postgres_host | default('localhost') }}"
+      login_port: "{{ postgres_port | default(5432) }}"
+    loop: "{{ postgres_privs }}"
+
+  - name: Grant user permission on database
+    community.postgresql.postgresql_privs:
+      login_db: "{{ item.db }}"
+      state: present
+      privs: "{{ item.priv }}"
+      type: "{{ item.type }}"
+      roles: "{{ item.user }}"
+      login_user: "{{ postgres_admin }}"
+      login_password: "{{ postgres_admin_password }}"
+      login_host: "{{ postgres_host | default('localhost') }}"
+      login_port: "{{ postgres_port | default(5432) }}"
+    loop: "{{ postgres_privs }}"
+    when: item.auto_inherit is not defined or not item.auto_inherit
+
+  - name: Grant dba user permission on schema
+    community.postgresql.postgresql_privs:
+      login_db: "{{ item.db }}"
+      state: present
+      privs: "{{ item.schema_priv }}"
+      type: schema
+      objs: "{{ item.schema }}"
+      roles: "{{ item.user }}"
+      login_user: "{{ postgres_admin }}"
+      login_password: "{{ postgres_admin_password }}"
+      login_host: "{{ postgres_host | default('localhost') }}"
+      login_port: "{{ postgres_port | default(5432) }}"
+    loop: "{{ postgres_privs }}"
+    when: item.auto_inherit is not defined or not item.auto_inherit
+
+  - name: Grant user permission on existing tables
+    community.postgresql.postgresql_privs:
+      login_db: "{{ item.db }}"
+      state: present
+      privs: "{{ item.priv }}"
+      type: "{{ item.type }}"
+      objs: ALL_IN_SCHEMA
+      schema: "{{ item.schema }}"
+      roles: "{{ item.user }}"
+      login_user: "{{ postgres_admin }}"
+      login_password: "{{ postgres_admin_password }}"
+      login_host: "{{ postgres_host | default('localhost') }}"
+      login_port: "{{ postgres_port | default(5432) }}"
+    loop: "{{ postgres_privs }}"
+    when: item.auto_inherit is defined and item.auto_inherit
+
+  - name: Grant user permission on future tables
+    community.postgresql.postgresql_privs:
+      login_db: "{{ item.db }}"
+      state: present
+      privs: "{{ item.priv }}"
+      type: default_privs
+      objs: TABLES
+      schema: "{{ item.schema }}"
+      roles: "{{ item.user }}"
+      login_user: "{{ postgres_admin }}"
+      login_password: "{{ postgres_admin_password }}"
+      login_host: "{{ postgres_host | default('localhost') }}"
+      login_port: "{{ postgres_port | default(5432) }}"
+    loop: "{{ postgres_privs }}"
+    when: item.auto_inherit is defined and item.auto_inherit
+
+  - name: Setup default privileges for user
+    community.postgresql.postgresql_query:
+      db: "{{ item.db }}"
+      login_user: "{{ postgres_admin }}"
+      login_password: "{{ postgres_admin_password }}"
+      login_host: "{{ postgres_host | default('localhost') }}"
+      login_port: "{{ postgres_port | default(5432) }}"
+      query: >
+        ALTER DEFAULT PRIVILEGES FOR ROLE {{ item.table_creator }}
+        IN SCHEMA {{ item.schema }}
+        GRANT SELECT ON TABLES TO {{ item.user }};
+    loop: "{{ postgres_privs }}"
+    when: item.auto_inherit is defined and item.auto_inherit
+
+  when: _patroni_primary.json.role == "primary"
+  tags: [primary]

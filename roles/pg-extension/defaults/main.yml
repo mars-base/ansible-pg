@@ -1,0 +1,20 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/pg-ext
+postgres_host: "{{ ansible_default_ipv4.address }}"
+postgres_port: 5432
+postgres_admin: postgres
+postgres_admin_password: CHANGEME
+
+pig_tool: "https://repo.pigsty.io/pkg/pig/v1.0.0/pig_1.0.0-1_amd64.deb"
+pg_extensions:
+  - "pg_cron"
+  - "uuid-ossp"
+  - "pg_stat_statements"
+pg_create_extensions: false
+pg_extensions_on:
+  - { db: 'dev', extension: 'pg_stat_statements' }
+  - { db: 'prod', extension: 'pg_stat_statements' }
+  - { db: 'postgres', extension: 'pg_cron' } # pg_cron固定配置到postgres数据库
+  - { db: 'dev', extension: 'uuid-ossp' }
+  - { db: 'prod', extension: 'uuid-ossp' }

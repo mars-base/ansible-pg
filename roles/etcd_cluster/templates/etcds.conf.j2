@@ -1,0 +1,29 @@
+# {{ ansible_managed }}
+
+[program:etcd_{{ etcds_port_base_peer }}]
+autostart = true
+autorestart = unexpected
+stopsignal = TERM
+command = {{ etcds_dir_bin }}/etcd
+  --auto-compaction-mode periodic # 周期压缩
+  --auto-compaction-retention 30m # 30 minutes
+  --quota-backend-bytes=8589934592 # 8GB
+  --name {{ etcds_name }}
+  --data-dir {{ etcds_dir_data }}
+  --initial-advertise-peer-urls http://{{ etcds_inner_ip }}:{{ etcds_port_base_peer }}
+  --listen-peer-urls http://{{ etcds_listen_ip }}:{{ etcds_port_base_peer }}
+  --advertise-client-urls http://{{ etcds_inner_ip }}:{{ etcds_port_roof_client }}
+  --listen-client-urls http://{{ etcds_listen_ip }}:{{ etcds_port_roof_client }}
+  --initial-cluster {{ etcds_cluster }}
+  --initial-cluster-state {{ etcds_cluster_state }}
+  --initial-cluster-token {{ etcds_cluster_token }}
+directory = {{ etcds_dir }}
+environment = ETCD_ENABLE_V2="true"
+user = {{ etcds_user }}
+stderr_logfile = {{ etcds_dir_logs }}/stderr.log
+stdout_logfile = {{ etcds_dir_logs }}/stdout.log
+redirect_stderr = false
+stderr_logfile_maxbytes= 50MB
+stderr_logfile_backups = 5
+stdout_logfile_maxbytes = 50MB
+stdout_logfile_backups = 5

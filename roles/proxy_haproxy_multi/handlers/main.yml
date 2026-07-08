@@ -1,0 +1,17 @@
+---
+- name: restart rsyslog
+  service:
+    name: rsyslog
+    state: restarted
+
+- name: restart haproxy
+  service:
+    name: haproxy
+    enabled: yes
+    state: restarted
+
+- name: reload haproxy
+  service:
+    name: haproxy
+    enabled: yes
+    state: reloaded

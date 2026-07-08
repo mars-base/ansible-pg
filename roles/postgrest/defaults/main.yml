@@ -1,0 +1,16 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/postgrest
+postgrest_user: dba
+postgrest_password: CHANGEME
+postgrest_host: "{{ ansible_default_ipv4.address }}"
+postgrest_port: 5433
+postgrest_db: dev
+postgrest_schema: public
+postgrest_annonymous_role: anno
+postgrest_server_host: "{{ ansible_default_ipv4.address }}"
+postgrest_server_port: 4000
+postgrest_jwt_secret: "CHANGEME"
+postgrest_jwt_aud: postgrest
+postgrest_db_pool: 10
+postgrest_db_channel_enabled: "false"

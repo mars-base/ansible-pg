@@ -1,0 +1,62 @@
+---
+
+- name: Install haproxy
+  apt:
+    name: haproxy
+    state: present
+
+- name: Generate rsyslog config
+  template:
+    dest: "/etc/rsyslog.d/49-haproxy.conf"
+    src: "49-haproxy.conf.j2"
+    backup: no
+  notify:
+    - restart rsyslog
+
+- name: Start haproxy
+  service:
+    name: haproxy
+    enabled: yes
+    state: started
+
+- name: Copy ca pem
+  copy:
+    dest: "/etc/haproxy/{{ item.ha_ca_name }}"
+    src: "{{ item.ha_ca_dir }}/{{ item.ha_ca_name }}"
+    owner: haproxy
+    group: haproxy
+    mode: "u+rw,g=r,o=r"
+    backup: no
+  when: item.enable_https
+  loop: "{{ ha_proxy_list }}"
+  notify:
+    - reload haproxy
+
+- name: Generate config
+  template:
+    dest: "/etc/haproxy/{{ item }}"
+    src: "{{ item }}.j2"
+    backup: no
+  loop:
+    - "haproxy.cfg"
+  notify:
+    - reload haproxy
+
+- name: Output stats url
+  debug:
+    msg: "stats url: http://{{ ansible_default_ipv4.address }}:{{ ha_stats_port }}/haproxy/stats"
+  when: ha_stats_enable
+
+- name: Output postgresql primary url
+  debug:
+    msg: "postgresql primary 主库写流量: -h {{ ansible_default_ipv4.address }} -p 5000\n验证主库信息: PGPASSWORD=[password] psql -h {{ ansible_default_ipv4.address }} -p 5000 -U [user] -d [db] -c \"select inet_server_addr(), pg_is_in_recovery();\""
+  when: ha_patroni_postgres_list is defined and ha_patroni_postgres_list | length > 0
+
+- name: Output postgresql replicas url
+  debug:
+    msg: "postgresql replicas: -h {{ ansible_default_ipv4.address }} -p 5001"
+  when: ha_patroni_postgres_list is defined and ha_patroni_postgres_list | length > 0
+- name: Output postgresql replicas url
+  debug:
+    msg: "postgresql replicas 从库读流量: -h {{ ansible_default_ipv4.address }} -p 5001\n验证从库信息: PGPASSWORD=[password] psql -h {{ ansible_default_ipv4.address }} -p 5001 -U [user] -d [db] -c \"select inet_server_addr(), pg_is_in_recovery();\""
+  when: ha_patroni_postgres_list is defined and ha_patroni_postgres_list | length > 0

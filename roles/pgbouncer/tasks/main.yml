@@ -1,0 +1,44 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/pgbouncer
+- name: Create pgbouncer directory
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: postgres
+    group: postgres
+  loop:
+    - "{{ pgbouncer_dir }}"
+
+- name: Install pgbouncer
+  apt:
+    name: pgbouncer
+    state: present
+
+- name: Create pgbouncer config
+  template:
+    src: pgbouncer.ini
+    dest: "{{ pgbouncer_conf }}"
+    backup: yes
+  notify: Reload pgbouncer
+
+- name: Create user list
+  template:
+    src: userlist.txt
+    dest: "{{ pgbouncer_userlist }}"
+    backup: yes
+  notify: Reload pgbouncer
+
+- name: Enable pgbouncer service
+  service:
+    name: pgbouncer
+    enabled: yes
+
+- name: Start pgbouncer
+  service:
+    name: pgbouncer
+    state: started
+
+- name: Tips connection
+  debug:
+    msg: "PGPASSWORD=[password] psql -h {{ pgbouncer_listen_addr }} -p {{ pgbouncer_listen_port }} -U [user] -d [db]"

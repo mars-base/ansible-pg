@@ -1,0 +1,106 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/patroni
+- name: Fetch system code
+  command: "lsb_release -c -s 2>/dev/null"
+  register: _lsb_release_code
+  failed_when: _lsb_release_code.rc != 0 or _lsb_release_code.stdout == ""
+
+- name: Install pig apt source
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pgsql.list
+    content: |
+      deb [trusted=yes] https://repo.pigsty.io/apt/pgsql/{{ _lsb_release_code.stdout }} {{ _lsb_release_code.stdout }} main
+      deb [trusted=yes] https://repo.pigsty.io/apt/infra/ generic main
+    mode: "0644"
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  register: _apt_update
+  ignore_errors: true
+  tags: [repo]
+
+- name: Debug apt update output
+  ansible.builtin.debug:
+    var: _apt_update
+  tags: [repo]
+
+- name: Install PostgreSQL dependency apt package
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - postgresql-common
+    - ca-certificates
+
+  #   - name: Install apt pgdg apt source file
+  #     shell: >
+  #       echo | /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
+  #     register: _pgdg_apt
+  #   - debug:
+  #       var: _pgdg_apt.stdout
+  # tags: [dependency, repo]
+
+- name: Install postgresql {{ postgres_version }}
+  apt:
+    name: "{{ item }}"
+    state: present
+    # update_cache: yes
+  loop:
+    - postgresql-client-{{ postgres_version }}
+    - postgresql-{{ postgres_version }}
+  tags: [apt]
+
+- name: Stop systemd postgres {{ postgres_version }}
+  shell: |
+    sudo systemctl stop postgresql@{{ postgres_version }}-main
+  ignore_errors: true
+  tags: [stop]
+
+- name: Disable systemd postgres {{ postgres_version }}
+  shell: |
+    sudo systemctl disable postgresql@{{ postgres_version }}-main
+  ignore_errors: true
+  tags: [disable]
+
+- name: Create patroni config dir
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+    owner: postgres
+    group: postgres
+  loop:
+    - "{{ patroni_dir }}"
+    - "{{ patroni_dir }}/logs"
+    - "{{ postgres_data_dir }}"
+  tags: [dir]
+
+- name: Generate patroni config file
+  ansible.builtin.template:
+    src: pg.yaml
+    dest: "{{ patroni_dir }}/pg.yaml"
+    mode: "0644"
+    owner: postgres
+    group: postgres
+  tags: [config, patroni-config]
+
+- name: Generate patroni supervisor config file
+  ansible.builtin.template:
+    src: "supervisor/patroni.ini.j2"
+    dest: "/etc/supervisor/conf.d/patroni.ini"
+    mode: "0644"
+  tags: [supervisor]
+
+- name: Enable patroni supervisor service
+  ansible.builtin.shell: |
+    sudo supervisorctl reread
+    sudo supervisorctl update
+  tags: [supervisor]
+
+- name: Start patroni supervisor service
+  ansible.builtin.shell: |
+    sudo supervisorctl start patroni
+  tags: [supervisor]

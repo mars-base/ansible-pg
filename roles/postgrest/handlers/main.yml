@@ -1,0 +1,7 @@
+#SPDX-License-Identifier: MIT-0
+---
+# handlers file for roles/postgrest
+- name: Reload postgrest
+  systemd:
+    name: postgrest
+    state: reloaded

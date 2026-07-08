@@ -1,0 +1,28 @@
+---
+
+# NOTE: this is adjust for one instances or multi hosts
+# 主要修改下面2个变量即可
+etcds_cluster_hosts:
+  - name: "{{inventory_hostname}}"
+    ip:   "{{hostvars[inventory_hostname]['ansible_host']}}"
+    num: 1  # 当前主机上节点编号
+etcds_child_count: 1  # 几个节点
+
+etcds_name: "{{inventory_hostname}}"
+etcds_user: "root"
+etcds_group: "root"
+etcds_dir: "/srv/etcds"
+etcds_dir_data: "{{ etcds_dir }}/data"
+etcds_dir_bin: "{{ etcds_dir }}/bin"
+etcds_dir_logs: "{{ etcds_dir }}/logs"
+etcds_port_base_peer: 12380  # 节点间通信端口
+etcds_port_roof_client: 12379  # 客户端访问端口
+etcds_inner_ip: "{{hostvars[inventory_hostname]['ansible_host']}}"
+etcds_listen_ip: "0.0.0.0"
+
+etcds_cluster_state: "new"
+etcds_cluster_token: "etcds-cluster-token-1234567890"
+etcds_cluster: "{%- for h in etcds_cluster_hosts -%}{{ h.name }}=http://{{ h.ip }}:{{ etcds_port_base_peer }}{% if h.num < etcds_child_count %},{% endif %}{%- endfor %}"
+
+etcds_bin_url: "https://storage.googleapis.com/etcd/v3.5.17/etcd-v3.5.17-linux-amd64.tar.gz"
+etcds_bin_checksum: "md5:aaece1adfcc2fbd312831f2b509ec74c"

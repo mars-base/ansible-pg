@@ -1,0 +1,242 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/pgpitr
+- name: Check if pitr_timestamp is defined and not empty
+  debug:
+    msg: "pitr_timestamp is defined and not empty: {{ pitr_timestamp }}"
+  when: pitr_timestamp is defined and pitr_timestamp != ''
+  failed_when: pitr_timestamp is not defined or pitr_timestamp == ''
+
+- name: Select the node by patroni api
+  uri:
+    url: "http://{{ ansible_default_ipv4.address }}:8008/"
+    method: GET
+    return_content: true
+    # status_code: 200
+    body_format: json
+  register: _patroni_node
+  changed_when: true
+  ignore_errors: true
+  tags: [load-patroni-role]
+
+- name: Show the node info
+  debug:
+    msg: "Patroni node info:\nhost:{{ _patroni_node.json.patroni.name }}\nrole:{{ _patroni_node.json.role }}"
+  when: _patroni_node.json.role is defined
+
+- name: Record patroni node role info to local file .inventory_hostname.patroni_role
+  copy:
+    content: "{{ _patroni_node.json.role }}"
+    dest: "./.{{ inventory_hostname }}.patroni_role"
+  when: _patroni_node.json.role is defined
+  delegate_to: localhost
+  tags: [load-patroni-role]
+
+- name: Show the local file .inventory_hostname.patroni_role
+  shell: |
+    cat .{{ inventory_hostname }}.patroni_role
+  register: _local_patroni_role
+  changed_when: true
+  delegate_to: localhost
+  ignore_errors: true
+  tags: [load-patroni-role]
+- debug:
+    msg: "Local patroni role file content:\n{{ _local_patroni_role.stdout }}"
+  when: _local_patroni_role.stdout != ""
+
+- name: Pause all patroni nodes for pitr recovery
+  shell: |
+    /srv/py3venv/bin/patronictl -c /srv/patroni/pg.yaml pause
+  register: _pause_result
+  failed_when: >
+    _pause_result.rc != 0 and
+    'already paused' not in (_pause_result.stdout | default('') + _pause_result.stderr | default(''))
+  when: _local_patroni_role.stdout == "primary"
+- debug:
+    msg: "{{ _pause_result.stdout }}"
+  when: _local_patroni_role.stdout == "primary"
+
+- name: Stop all replica patroni progress and postgres process
+  shell: |
+    supervisorctl stop patroni && \
+    sudo -iu postgres /usr/lib/postgresql/{{ postgres_version }}/bin/pg_ctl -D /srv/patroni/postgres/data stop -m fast
+  ignore_errors: true
+  when: _local_patroni_role.stdout == "replica"
+
+- name: Stop all primary patroni progress and postgres process
+  shell: |
+    supervisorctl stop patroni && \
+    sudo -iu postgres /usr/lib/postgresql/{{ postgres_version }}/bin/pg_ctl -D /srv/patroni/postgres/data stop -m fast
+  ignore_errors: true
+  when: _local_patroni_role.stdout == "primary"
+
+- name: Check postgres process is stopped
+  shell: |
+    ps aux |grep '/usr/lib/postgresql/{{ postgres_version }}/bin/postgres' |grep -v grep -c
+  register: _pg_process_count
+  failed_when: _pg_process_count.stdout|int != 0
+  changed_when: true
+
+- name: Check pgbackrest backup info
+  shell: |
+    pgbackrest --stanza={{ pgbackrest_stanza }} info
+  register: _pgbackrest_info
+  become: true
+  become_user: postgres
+  when: "'pgbackrest' in pg_node_role[inventory_hostname]['roles'] "
+- debug:
+    msg: "{{ _pgbackrest_info.stdout }}"
+  when: "'pgbackrest' in pg_node_role[inventory_hostname]['roles'] "
+
+- name: Fetch the last full backup timestamp
+  shell: |
+    echo "{{ _pgbackrest_info.stdout }}" | grep "full backup" | tail -n 1 | awk '{print $3}' | sed 's/F//g'
+  register: _pgbackrest_last_full_backup
+  when: "'pgbackrest' in pg_node_role[inventory_hostname]['roles'] "
+- debug:
+    msg: "the last full backup timestamp is: {{ _pgbackrest_last_full_backup.stdout }}"
+  when: "'pgbackrest' in pg_node_role[inventory_hostname]['roles']"
+
+- name: The pitr_timestamp must be between the last full backup time and current time
+  shell: |
+    # the last full backup timestamp format is: 20260324-010002
+    # format the curlly pitr_timestamp to the same format for comparison
+    pitr_timestamp_formatted=$(date -d "{{ pitr_timestamp }}" +"%Y%m%d-%H%M%S")
+    current_timestamp=$(date +%Y%m%d-%H%M%S)
+    echo "pitr_timestamp_formatted: $pitr_timestamp_formatted"
+    echo "pgbackrest_last_full_backup: {{ _pgbackrest_last_full_backup.stdout }}"
+    echo "current timestamp: $current_timestamp"
+    # compare the pitr_timestamp_formatted with the last full backup timestamp
+    if [[ "$pitr_timestamp_formatted" < "{{ _pgbackrest_last_full_backup.stdout }}" ]]; then
+      echo "pitr_timestamp_formatted is before the last full backup timestamp"
+      echo "error: pitr_timestamp must be after the last full backup timestamp for recovery"
+      exit 1
+    else
+      echo "pitr_timestamp_formatted is after the last full backup timestamp"
+    fi
+    # compare the pitr_timestamp_formatted with the current timestamp
+    if [[ "$pitr_timestamp_formatted" > "$current_timestamp" ]]; then
+      echo "pitr_timestamp_formatted is after the current timestamp"
+      echo "error: pitr_timestamp must be before the current timestamp for recovery"
+      exit 1
+    else
+      echo "pitr_timestamp_formatted is before the current timestamp"
+    fi
+    echo "pitr_timestamp_formatted is valid"
+  register: _pitr_timestamp_formatted
+  args:
+    executable: /bin/bash
+  ignore_errors: true
+  when: _local_patroni_role.stdout == "primary"
+- debug:
+    msg: "{{ _pitr_timestamp_formatted.stdout }}"
+  failed_when: _pitr_timestamp_formatted.stdout == "" or _pitr_timestamp_formatted.stdout.find("error") != -1
+  when: _local_patroni_role.stdout == "primary"
+
+- name: Create wal backup dir if not exists
+  file:
+    path: /srv/patroni/postgres/pg_wal.bak
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: 0700
+  when: _local_patroni_role.stdout == "primary"
+  tags: [pgwal]
+
+- name: Backup pg wal dir files to wal backup dir
+  shell: |
+    rsync -av /srv/patroni/postgres/data/pg_wal/ /srv/patroni/postgres/pg_wal.bak/
+  become: true
+  become_user: postgres
+  when: _local_patroni_role.stdout == "primary"
+  tags: [pgwal]
+
+- name: Rename primary pg data dir to backup before restore
+  command: >
+    mv /srv/patroni/postgres/data
+    /srv/patroni/postgres/data.pitr.{{ ansible_date_time.epoch }}
+  when: _local_patroni_role.stdout == "primary"
+
+- name: Create primary pg data dir
+  file:
+    path: /srv/patroni/postgres/data
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: 0750
+  when: _local_patroni_role.stdout == "primary"
+
+- name: Restore pg data by pgbackrest pitr recovery
+  shell: |
+    pgbackrest --stanza={{ pgbackrest_stanza }} --type=time "--target={{ pitr_timestamp }}" --target-action=promote --log-level-console=info restore
+  become: true
+  become_user: postgres
+  register: _restore_result
+  when: _local_patroni_role.stdout == "primary"
+  changed_when: _restore_result.stdout.find("successfully") != -1
+- debug:
+    msg: "{{ _restore_result.stdout }}"
+  when: _local_patroni_role.stdout == "primary"
+
+- name: Start primary patroni service
+  shell: |
+    supervisorctl start patroni
+  when: _local_patroni_role.stdout == "primary"
+  tags: [start-primary-patroni]
+
+- name: Resume primary patroni
+  shell: |
+    /srv/py3venv/bin/patronictl -c /srv/patroni/pg.yaml resume
+  when: _local_patroni_role.stdout == "primary"
+  ignore_errors: true
+  tags: [start-primary-patroni]
+
+- name: Wait postgres to start
+  wait_for:
+    port: "{{ postgres_port | default(5432) }}"
+    host: "{{ postgres_host | default(ansible_default_ipv4.address) }}"
+  when: _local_patroni_role.stdout == "primary"
+  tags: [start-primary-patroni]
+
+- name: Make sure primary patroni is running
+  shell: |
+    while true; do
+      info=$(/srv/py3venv/bin/patronictl -c /srv/patroni/pg.yaml list | grep Leader |grep running -c)
+      if [[ "$info" == "1" ]]; then
+        break
+      fi
+      sleep 1
+    done
+  args:
+    executable: /bin/bash
+  ignore_errors: true
+  when: _local_patroni_role.stdout == "primary"
+  tags: [check-patroni]
+
+- name: Start all replica patroni service
+  shell: |
+    supervisorctl start patroni
+  when: _local_patroni_role.stdout == "replica"
+  tags: [start-replica-patroni]
+
+- name: Wait 30 seconds for all replica patroni nodes to start
+  pause:
+    seconds: 30
+  tags: [check-patroni]
+
+- name: Check all patroni nodes are running
+  shell: |
+    /srv/py3venv/bin/patronictl -c /srv/patroni/pg.yaml list
+  register: _patroni_list
+  when: _local_patroni_role.stdout == "primary"
+  tags: [check-patroni]
+- debug:
+    msg: "{{ _patroni_list.stdout }}"
+  tags: [check-patroni]
+  when: _local_patroni_role.stdout == "primary"
+
+- name: If you find any replica node is not synchronized, you can force rebuild it
+  debug:
+    msg: "sudo /srv/py3venv/bin/patronictl -c /srv/patroni/pg.yaml reinit {{ patroni_cluster_name }} {{ inventory_hostname }} --force"
+  when: _local_patroni_role.stdout == "replica"
+  tags: [check-patroni]

@@ -1,0 +1,33 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/pgdog
+pgdog_version: main
+pgdog_image: "ghcr.io/pgdogdev/pgdog:{{ pgdog_version }}"
+pgdog_dir: /srv/pgdog
+pgdog_host: "127.0.0.1"
+pgdog_port: 7432
+pgdog_openmetrics_port: 19090
+
+pgdog_databases:
+  - name: "pgdog"               # 指定分片数据库名 客户端连接pgdog的时候使用的数据库名
+    host: "127.0.0.1"           # pgdog连接到Postgres分片数据库的主机名
+    port: 5432                  # pgdog连接到Postgres分片数据库的端口号
+    database_name: "test1"      # pgdog连接到Postgres分片数据库的数据库名
+    shard: 0                    # 指定分片序号 从0开始 每个分片数据库的序号都不同
+    role: "primary"             # 指定分片数据库的角色 可选值 primary, replica
+  - name: "pgdog"
+    host: "127.0.0.1"
+    port: 5432
+    database_name: "test2"
+    shard: 1
+    role: "primary"
+pgdog_dba_password: "CHANGEME"     # password for dba user
+pgdog_users:
+  - database: "pgdog"   # 指定分片数据库名
+    name: "dba"         # has permission to test1 and test2
+    password: "{{ pgdog_dba_password }}"
+pgdog_sharded_tables:
+  - database: "pgdog"   # 指定分片数据库名
+    name: "users"       # 指定分片表名 不需要指定schema名 默认使用public schema
+    column: "id"   # 指定分片列名
+    data_type: "bigint" # 指定分片列的数据类型 支持类型有 bigint, uuid, varchar, vector

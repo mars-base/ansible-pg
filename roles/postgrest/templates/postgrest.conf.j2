@@ -1,0 +1,30 @@
+# PostgREST configuration file
+# https://postgrest.org/en/stable/references/configuration.html
+
+# Database connection string (required)
+db-uri = "postgres://{{ postgrest_user }}:{{ postgrest_password }}@{{ postgrest_host }}:{{ postgrest_port }}/{{ postgrest_db }}"
+
+# Schema(s) to expose
+db-schemas = "{{ postgrest_schema }}"
+
+# Anonymous role for unauthenticated requests
+db-anon-role = "{{ postgrest_annonymous_role }}"
+
+# Server settings
+server-host = "{{ postgrest_server_host }}"
+server-port = {{ postgrest_server_port }}
+
+# Connection pool settings
+db-pool = {{ postgrest_db_pool }}
+db-pool-acquisition-timeout = 10
+
+# JWT settings (optional)
+jwt-secret = "{{ postgrest_jwt_secret }}"
+jwt-aud = "{{ postgrest_jwt_aud }}"
+
+# OpenAPI settings
+openapi-mode = "follow-privileges"
+openapi-server-proxy-uri = "http://{{ postgrest_server_host }}:{{ postgrest_server_port }}"
+
+# db channel settings
+db-channel-enabled = {{ postgrest_db_channel_enabled }}

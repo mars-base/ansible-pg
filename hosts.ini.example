@@ -1,0 +1,33 @@
+# Postgres 部署示例 inventory
+# 请根据实际环境修改 IP、用户名和节点角色
+
+# pg_cluster: patroni + pgbouncer + pgbackrest 等组件所在节点
+[pg_cluster]
+pg-patroni-01 ansible_host=192.168.1.11 private_ip=192.168.1.11 ansible_user=root
+pg-patroni-02 ansible_host=192.168.1.12 private_ip=192.168.1.12 ansible_user=root
+pg-backup ansible_host=192.168.1.13 private_ip=192.168.1.13 ansible_user=root
+
+# pg_fish: 单节点测试部署示例（etcd + patroni + pgbouncer + pgbackrest + postgrest）
+[pg_fish]
+pg-single ansible_host=192.168.1.10 private_ip=192.168.1.10 ansible_user=root
+
+# pgdog 分片代理测试节点
+[pgdog]
+pg-single
+
+# pgbouncer 独立组（如需要单独维护）
+[pgbouncer]
+
+# patroni 独立组
+[patroni]
+pg-patroni-01
+pg-patroni-02
+
+# etcd 独立组
+[etcds]
+pg-backup
+
+# 所有 PostgreSQL 相关节点
+[pg:children]
+pg_cluster
+pg_fish

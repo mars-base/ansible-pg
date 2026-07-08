@@ -1,0 +1,39 @@
+---
+- name: Test vars
+  debug:
+    var: etcds_cluster
+  tags: [test]
+
+- name: Make directories
+  file:
+    owner: "{{ etcds_user }}"
+    group: "{{ etcds_group|default(etcds_user) }}"
+    path: "{{ item }}"
+    state: directory
+  with_items:
+    - "{{ etcds_dir }}"
+    - "{{ etcds_dir_bin }}"
+    - "{{ etcds_dir_logs }}"
+    - "{{ etcds_dir_data }}"
+
+- name: Download binary
+  unarchive:
+    src: "{{ etcds_bin_url }}"
+    dest: "{{ etcds_dir_bin }}"
+    remote_src: yes
+    owner: "{{ etcds_user }}"
+    group: "{{ etcds_group|default(etcds_user) }}"
+    extra_opts:
+      - "--strip-components=1"
+
+- name: Add to supervisord
+  template:
+    src: etcds.conf.j2
+    dest: "{{ supervisor_conf_d }}/etcds.conf"
+  tags: [config]
+
+- name: reread and update supervisor
+  shell: supervisorctl reread && supervisorctl update
+  tags: [config]
+
+- meta: flush_handlers

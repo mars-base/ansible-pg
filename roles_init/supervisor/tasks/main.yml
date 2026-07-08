@@ -1,0 +1,14 @@
+---
+
+- name: Install supervisor
+  apt:
+    name: supervisor
+
+- name: Configure supervisor
+  template:
+    dest: /etc/supervisor/supervisord.conf
+    src: supervisord.conf.j2
+  notify:
+    - restart supervisor
+
+- meta: flush_handlers

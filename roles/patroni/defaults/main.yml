@@ -1,0 +1,21 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/patroni
+patroni_cluster_name: "batman"
+patroni_etcd_address: "127.0.0.1:2379"
+patroni_dir: "/srv/patroni"
+postgres_version: 17
+postgres_replication_username: "replicator"
+postgres_replication_password: "CHANGEME"
+postgres_superuser_username: "postgres"
+postgres_superuser_password: "CHANGEME"
+postgres_rewind_username: "rewind"
+postgres_rewind_password: "CHANGEME"
+postgres_data_dir: "{{ patroni_dir }}/postgres/data"
+postgres_replication_trust_cidr: "127.0.0.1/32"
+# pg_hba 认证算法，可选 md5 或 scram-sha-256（推荐）
+# 注意：改为 scram-sha-256 后需对所有 pg 用户执行 ALTER USER xxx PASSWORD 'xxx' 重新存储密码
+postgres_hba_auth_method: "md5"
+postgres_archive_command: "pgbackrest --stanza=patroni_backup archive-push %p"
+postgres_restore_command: "pgbackrest --stanza=patroni_backup archive-get %f %p"
+postgres_shared_preload_libraries: "pg_cron,pg_stat_statements,uuid-ossp" # 注意：pgmq需要在shared_preload_libraries中添加

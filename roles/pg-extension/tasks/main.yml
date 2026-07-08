@@ -1,0 +1,60 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/pg-ext
+- name: Fetch system code
+  command: "lsb_release -c -s 2>/dev/null"
+  register: _lsb_release_code
+  failed_when: _lsb_release_code.rc != 0 or _lsb_release_code.stdout == ""
+
+- name: Install pig apt source
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pgsql.list
+    content: |
+      deb [trusted=yes] https://repo.pigsty.io/apt/pgsql/{{ _lsb_release_code.stdout }} {{ _lsb_release_code.stdout }} main
+      deb [trusted=yes] https://repo.pigsty.io/apt/infra/ generic main
+    mode: "0644"
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Install pig tool
+  vars:
+    _pkg_url: "{{ pig_tool }}"
+  apt:
+    deb: "{{ _pkg_url }}"
+    state: present
+
+- name: Install postgresql extensions
+  shell: |
+    pig install "{{ item }}"
+  args:
+    executable: /bin/bash
+  loop: "{{ pg_extensions }}"
+  register: _install_ext
+  when: item is defined and item != ""
+  failed_when: _install_ext.rc != 0
+
+- block:
+  - name: Check if this node is PostgreSQL primary
+    community.postgresql.postgresql_query:
+      db: postgres
+      login_user: "{{ postgres_admin }}"
+      login_password: "{{ postgres_admin_password }}"
+      login_host: "{{ postgres_host | default('localhost') }}"
+      login_port: "{{ postgres_port | default(5432) }}"
+      query: "SELECT pg_is_in_recovery();"
+    register: is_recovery
+
+  - name: Install PostgreSQL extensions on primary node only
+    community.postgresql.postgresql_query:
+      db: "{{ item.db }}"
+      login_user: "{{ postgres_admin }}"
+      login_password: "{{ postgres_admin_password }}"
+      login_host: "{{ postgres_host | default('localhost') }}"
+      login_port: "{{ postgres_port | default(5432) }}"
+      query: "CREATE EXTENSION IF NOT EXISTS \"{{ item.extension }}\";"
+    loop: "{{ pg_extensions_on }}"
+    when: not is_recovery.query_result[0]['pg_is_in_recovery']
+  when: pg_create_extensions or pg_create_extensions == 'true'
+  tags: [create]

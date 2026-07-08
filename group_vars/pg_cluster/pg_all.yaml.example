@@ -1,0 +1,251 @@
+---
+# 定义 patroni postgres 集群的所有节点的配置变量
+# NOTE: 本文件为示例，请将 CHANGEME 替换为实际密码后复制为 pg_all.yaml 使用
+
+# 节点角色定义
+pg_node_role:
+  pg-patroni-01:
+    roles:
+      - py3
+      - patroni
+      - pgbouncer
+      - pgbackrest
+  pg-patroni-02:
+    roles:
+      - py3
+      - patroni
+      - pgbouncer
+      - pgbackrest
+  pg-backup:
+    roles:
+      - py3
+      - etcd
+      - haproxy
+      - pgbackrest
+      - postgrest
+
+# haproxy 配置，作为 postgres 数据库集群的负载均衡器，连接到 pgbouncer 代理，读写分离模式
+# 读写分离模式：写操作只连接到主节点，读操作连接到从节点
+ha_proxy_list: []
+ha_patroni_postgres_list:
+  - name: pg-patroni-01
+    addr: "{{ hostvars['pg-patroni-01']['ansible_host'] | default('192.168.1.11') }}:5433" # through pgbouncer proxy
+  - name: pg-patroni-02
+    addr: "{{ hostvars['pg-patroni-02']['ansible_host'] | default('192.168.1.12') }}:5433" # through pgbouncer proxy
+
+# etcd 集群节点定义
+etcds_cluster_hosts:
+  - name: "pg-backup"
+    ip:   "{{hostvars['pg-backup']['ansible_host']}}"
+    num: 1  # 当前主机上节点编号
+etcds_child_count: 1  # 几个节点
+etcds_port_roof_client: 12379  # 客户端访问端口
+etcds_dir: "/srv/etcds"
+
+# pgbouncer 配置，作为 postgres 数据库节点上的sidecar代理连接池
+pgbouncer_dir: /srv/pgbouncer
+pgbouncer_listen_addr: "{{ ansible_default_ipv4.address }}"
+pgbouncer_listen_port: 5433 # pgbouncer 监听端口，在patroni配置中配置启用代理连接池
+pgbouncer_socket_dir: "{{ pgbouncer_dir }}" # pgbouncer 代理socket目录
+pgbouncer_users:
+  - name: postgres # postgres 超级用户，用于管理数据库
+    password: CHANGEME
+  - name: dba
+    password: CHANGEME
+  - name: dev
+    password: CHANGEME
+  - name: prod
+    password: CHANGEME
+  - name: ro # 只读用户
+    password: CHANGEME
+pgbouncer_databases:
+  - name: postgres # postgres 管理数据库
+    host: "{{ ansible_default_ipv4.address }}"
+    port: 5432
+    dbname: postgres
+  - name: dev
+    host: "{{ ansible_default_ipv4.address }}"
+    port: 5432
+    dbname: dev
+  - name: prod
+    host: "{{ ansible_default_ipv4.address }}"
+    port: 5432
+    dbname: prod
+
+# pgbackrest 配置，作为 postgresql 数据库的备份恢复工具
+pgbackrest_user: postgres  # pgbackrest运行用户，保持和patroni里运行postgres用户一致,默认是postgres
+pgbackrest_backup_pgpass: "CHANGEME" # postgres管理员用户的密码，保持和patroni里postgres管理员用户密码一致
+pgbackrest_sockert_dir: "{{ pgbouncer_socket_dir }}" # pgbouncer代理socket目录
+pgbackrest_pg_port: 5433  # pgbouncer代理端口，和pgbouncer监听端口一致
+pgbackrest_backup_dir: /srv/pgbackrest_ha
+pgbackrest_backup_log_dir: /var/log/pgbackrest_ha
+pgbackrest_backup_server: pg-backup # 指定备份服务器
+pgbackrest_stanza: ha  # 设置pg集群的备份仓库名称
+
+# pgbackrest ssh 密钥对（备份服务器与 patroni 节点之间通过 ssh 通信）
+# 生成方式：ssh-keygen -t rsa -b 4096 -f id_rsa_pgbackrest -N '' -C 'pgbackrest'
+pgbackrest_ssh_private_key: |
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  YOUR_PRIVATE_KEY_CONTENT_LINE_1
+  YOUR_PRIVATE_KEY_CONTENT_LINE_2
+  ...
+  YOUR_PRIVATE_KEY_CONTENT_LINE_N
+  -----END OPENSSH PRIVATE KEY-----
+pgbackrest_ssh_public_key: "YOUR_PUBLIC_KEY_CONTENT_HERE"
+
+pgbackrest_backup_config: |    # 备份服务器的pgbackrest配置
+  [global]
+  repo1-path={{ pgbackrest_backup_dir }}
+  repo1-retention-full=7
+  repo1-retention-full-type=time
+
+  process-max=2
+  archive-check=y
+  start-fast=y
+
+  log-level-console=info
+  log-path={{ pgbackrest_backup_log_dir }}
+  log-level-file=debug
+
+  [{{ pgbackrest_stanza }}]
+  pg1-host={{ hostvars['pg-patroni-01']['ansible_host'] | default('192.168.1.11') }}
+  pg1-host-port=32200
+  pg1-host-user=postgres
+  pg1-path=/srv/patroni/postgres/data
+  pg1-port={{ pgbackrest_pg_port }}
+  pg1-socket-path={{ pgbackrest_sockert_dir }}
+  pg1-database=postgres
+
+  pg2-host={{ hostvars['pg-patroni-02']['ansible_host'] | default('192.168.1.12') }}
+  pg2-host-port=32200
+  pg2-host-user=postgres
+  pg2-path=/srv/patroni/postgres/data
+  pg2-port={{ pgbackrest_pg_port }}
+  pg2-socket-path={{ pgbackrest_sockert_dir }}
+  pg2-database=postgres
+
+pgbackrest_patroni_config: | # patroni postgres节点的pgbackrest配置
+  [global]
+  repo1-path={{ pgbackrest_backup_dir }}
+  repo1-retention-full=7
+  repo1-retention-full-type=time
+
+  repo1-host={{ hostvars['pg-backup']['ansible_host'] | default('192.168.1.13') }}
+  repo1-host-port=32200
+  repo1-host-user=postgres
+
+  process-max=2
+  archive-check=y
+  start-fast=y
+
+  log-level-console=info
+  log-path={{ pgbackrest_backup_log_dir }}
+  log-level-file=debug
+
+  [{{ pgbackrest_stanza }}]
+  pg1-path=/srv/patroni/postgres/data
+  pg1-port={{ pgbackrest_pg_port }}
+  pg1-socket-path={{ pgbackrest_sockert_dir }}
+  pg1-database=postgres
+
+# patroni 配置，作为 postgresql 数据库节点的高可用管理工具
+patroni_etcd_address: "{{ hostvars['pg-backup']['ansible_host'] | default('192.168.1.13') }}:12379"
+patroni_cluster_name: "pg-ha"
+patroni_dir: "/srv/patroni"
+
+postgres_version: 17
+postgres_replication_username: "replicator"
+postgres_replication_password: "CHANGEME"
+postgres_superuser_username: "postgres"
+postgres_superuser_password: "CHANGEME"
+postgres_rewind_username: "rewind"
+postgres_rewind_password: "CHANGEME"
+postgres_data_dir: "{{ patroni_dir }}/postgres/data"
+postgres_replication_trust_cidr: "{{ hostvars['pg-patroni-01']['ansible_host'] | default('192.168.1.11') | regex_replace('^(\\d+\\.\\d+\\.\\d+)\\.\\d+$', '\\1.0/24') }}"
+postgres_archive_command: "pgbackrest --stanza=ha archive-push %p"
+postgres_restore_command: "pgbackrest --stanza=ha archive-get %f %p"
+
+postgres_users:
+  - name: dba
+    password: CHANGEME
+  - name: dev
+    password: CHANGEME
+  - name: prod
+    password: CHANGEME
+  - name: ro  # 只读用户
+    password: CHANGEME
+postgres_dbs:
+  - dev
+  - prod
+postgres_privs:
+  - db: dev
+    user: dba,dev
+    type: database
+    priv: ALL
+    schema: public
+    schema_priv: CREATE,USAGE
+  - db: prod
+    user: dba,prod
+    type: database
+    priv: ALL
+    schema: public
+    schema_priv: CREATE,USAGE
+  - db: dev
+    user: ro
+    type: table
+    priv: SELECT
+    schema: public
+    auto_inherit: true
+    table_creator: dba
+  - db: prod
+    user: ro
+    type: table
+    priv: SELECT
+    schema: public
+    auto_inherit: true
+    table_creator: dba
+  # 配置pgmq扩展 需要的权限
+  - db: dev
+    user: dba
+    type: database
+    priv: ALL
+    schema: pgmq
+    schema_priv: CREATE,USAGE
+  - db: dev
+    user: dba
+    type: table
+    priv: SELECT,INSERT,UPDATE,DELETE
+    schema: pgmq
+    auto_inherit: true
+    table_creator: postgres
+
+# pig_tool: "https://repo.pigsty.io/pkg/pig/v1.0.0/pig_1.0.0-1_amd64.deb"
+postgres_shared_preload_libraries: "pg_cron,pg_stat_statements,uuid-ossp"
+pg_extensions:
+  - "pg_cron"
+  - "uuid-ossp"
+  - "pg_stat_statements"
+  - "pgmq"
+pg_create_extensions: false
+pg_extensions_on:
+  - { db: 'dev', extension: 'pg_stat_statements' }
+  - { db: 'prod', extension: 'pg_stat_statements' }
+  - { db: 'postgres', extension: 'pg_cron' } # pg_cron固定配置到postgres数据库
+  - { db: 'postgres', extension: 'pg_cron' }
+  - { db: 'dev', extension: 'uuid-ossp' }
+  - { db: 'prod', extension: 'uuid-ossp' }
+  - { db: 'dev', extension: 'pgmq' }
+
+# postgrest 配置，作为 postgresql 数据库的 RESTful API 服务器
+postgrest_user: dba
+postgrest_password: CHANGEME
+postgrest_host: "{{ ansible_default_ipv4.address }}"
+postgrest_port: 5000
+postgrest_db: dev
+postgrest_schema: public
+postgrest_annonymous_role: anno
+postgrest_server_host: "{{ ansible_default_ipv4.address }}"
+postgrest_server_port: 4000
+postgrest_jwt_secret: "CHANGEME"
+postgrest_jwt_aud: postgrest
+postgrest_db_pool: 10

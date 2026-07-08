@@ -1,0 +1,15 @@
+[program:patroni]
+autorestart = true
+autostart = true
+command = /srv/py3venv/bin/patroni {{ patroni_dir }}/pg.yaml
+directory = {{ patroni_dir }}
+redirect_stderr = false
+stderr_logfile = {{ patroni_dir }}/logs/err_patroni.log
+stderr_logfile_maxbytes = 100MB
+stderr_logfile_backups = 5
+stdout_logfile = {{ patroni_dir }}/logs/out_patroni.log
+stdout_logfile_maxbytes = 100MB
+stdout_logfile_backups = 5
+user = postgres
+startsecs = 3
+startretries = 3

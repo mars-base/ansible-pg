@@ -1,0 +1,80 @@
+---
+
+# 参数
+# HOSTS: pg 主机
+# pg_port: pg 端口
+# pg_user: pg 用户
+# pg_password: pg 用户密码
+# pg_database: pg 数据库
+# sql_file: pg sql文件 放置在sql/目录下
+
+# Example:
+# playbooks/pgsql.yaml -e HOSTS=pg-single -e pg_port=5432 -e pg_user=dba -e pg_password=dba -e pg_database=dev -e sql_file=pg.sql
+
+- name: Exec sql on postgresql
+  gather_facts: true
+  hosts: "{{ HOSTS }}"
+  become: true
+  become_user: root
+  become_method: sudo
+  vars:
+    _sql_dir: "/srv/pgsql"
+  pre_tasks:
+    - name: Check params
+      assert:
+        that:
+          - pg_user is defined and pg_user!= ""
+          - pg_port is defined and pg_port!= ""
+          - pg_password is defined and pg_password!= ""
+          - pg_database is defined and pg_database!= ""
+          - sql_file is defined and sql_file!= ""
+  tasks:
+    - block:
+      - debug:
+          msg: "{{inventory_dir}}/sql/{{ sql_file }}"
+      - name: Check sql file exists
+        stat:
+          path: "{{inventory_dir}}/sql/{{ sql_file }}"
+        register: _sql_file
+      - debug:
+          var: _sql_file.stat.exists
+      - fail:
+          msg: "sql file {{ sql_file }} is not exists"
+        when: not _sql_file.stat.exists
+      delegate_to: localhost
+
+    - name: Create sql dir
+      file:
+        path: "{{ _sql_dir }}"
+        state: directory
+        mode: 0755
+
+    - name: Sync sql file to remote
+      synchronize:
+        src: "{{inventory_dir}}/sql/{{ sql_file }}"
+        dest: "{{ _sql_dir }}/{{ sql_file }}"
+        mode: push
+
+    - name: Check psql is installed
+      stat:
+        path: /usr/bin/psql
+      register: _psql
+    - debug:
+        msg: "psql is not installed"
+      when: not _psql.stat.exists
+    - fail:
+        msg: "psql is not installed"
+      when: not _psql.stat.exists
+
+    - name: Exec sql file
+      shell: |
+        export PGPASSWORD="{{ pg_password }}"
+        psql -h {{ ansible_default_ipv4.address }} -p {{ pg_port }} -U {{ pg_user }} -d {{ pg_database }} -f {{ _sql_dir }}/{{ sql_file }}
+      args:
+        executable: /bin/bash
+      async: 36000
+      poll: 1
+      ignore_errors: true
+      register: _out
+    - debug:
+        msg: "{{ _out.stdout }}\n{{ _out.stderr }}"

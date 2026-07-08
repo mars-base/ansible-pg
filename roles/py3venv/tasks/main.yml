@@ -1,0 +1,37 @@
+---
+- name: create directory
+  file:
+    path: "{{ item }}"
+    state: directory
+    recurse: true
+  loop:
+  - "{{ py3venv_dir }}"
+
+- name: install pip/venv
+  apt:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - "python3-pip"
+    - "python3-venv"
+
+- name: deploy python3 venv
+  shell: |
+    python3 -m venv {{ py3venv_dir }}
+  ignore_errors: true
+
+- name: install pip3 packages on venv
+  pip:
+    name: "{{ item }}"
+    extra_args: "-i https://mirrors.aliyun.com/pypi/simple/"
+    executable: "{{ py3venv_dir }}/bin/pip3"
+  loop:
+  - "{{ py3venv_pip_pkgs }}"
+
+- name: Verify version
+  shell: |
+    {{ py3venv_dir }}/bin/python3 -V
+  register: _version
+
+- debug:
+    msg: "py3venv bin: {{ py3venv_dir }}/bin/python3\n{{ _version.stdout }}"

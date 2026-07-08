@@ -1,0 +1,6 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/pgpitr
+pitr_timestamp: "" # 恢复到指定时间戳，格式为 "2026-01-14 15:50:00"
+postgres_version: 17
+pgbackrest_stanza: "pgstanza"

@@ -1,0 +1,76 @@
+---
+
+# 部署 高可用、读写分离 patroni postgres 集群
+
+
+# 更新pg配置
+# 1. ap -e HOSTS=pg_cluster playbooks/pg-ha-cluster.yaml -t patroni,patroni-config
+# 2. 调用patroni接口重载配置 对所有节点请求接口
+#    curl -XPOST http://[patroni-node-ip]:8008/reload
+# 3. 检查节点状态 根据情况需要重启pg节点，先重启replica节点，再重启primary节点
+
+# 初始化、创建pg数据库、用户、schema、权限等
+# ap -e HOSTS=pg_cluster playbooks/pg-ha-cluster.yaml -t initdb
+
+# 安装pg扩展，步骤参照文档 roles->pg-ext->README.md
+
+# 获取postgrest jwt token，100年过期
+# ap -e HOSTS=pg_cluster playbooks/pg-ha-cluster.yaml -t jwt-token
+
+# 注意事项
+# 1. 通过pgbouncer代理连接，使用pg的订阅发布功能（NOTIFY/LISTEN）时，pgbouncer的配置需要使用采用session模式
+# 2. pgbouncer的配置采用transaction模式，使用postgrest时，通过设置db-channel-enabled=false来禁用postgrest的通道功能
+
+# PITR恢复
+# 前置操作：
+# 1. 确保pgbackrest已有一次全量备份
+# 2. 恢复之前可以手动触发一次wal归档，使用Postgres数据库的管理员账号执行：select pg_switch_wal();
+#    执行后，会生成一个新的wal文件，老wal文件会被archive-push到备份服务器，查看patroni日志确认是否wal归档成功
+
+# 定义变量
+# pitr_timestamp: "2026-01-14 15:50:00+08" # 恢复到指定时间戳
+# 指定tag执行
+# ap -e HOSTS=pg_cluster playbooks/pg-ha-cluster.yaml -t pgpitr -e 'pitr_timestamp="2026-03-24 10:00:00+08"'
+
+- name: Deploy HA patroni postgres cluster
+  gather_facts: true
+  hosts: "{{ HOSTS | default('pg_cluster') }}"
+  become: true
+  become_user: root
+  become_method: sudo
+  roles:
+    - role: py3venv
+      tags: py3venv
+    - role: etcd_cluster
+      tags: etcd_cluster
+      when: "'etcd' in pg_node_role[inventory_hostname]['roles']"
+    - role: proxy_haproxy_multi
+      tags: haproxy
+      when: "'haproxy' in pg_node_role[inventory_hostname]['roles']"
+    - role: pgbouncer
+      tags: pgbouncer
+      when: "'pgbouncer' in pg_node_role[inventory_hostname]['roles']"
+    - role: pg-extension
+      tags: ["pg-extension", "ext"]
+      when: "'patroni' in pg_node_role[inventory_hostname]['roles']"
+    - role: patroni
+      tags: patroni
+      when: "'patroni' in pg_node_role[inventory_hostname]['roles']"
+    - role: patroni-wait
+      tags: ["patroni-start", "wait"]
+      when: "'patroni' in pg_node_role[inventory_hostname]['roles']"
+    - role: patroni-initdb
+      tags: ["patroni-initdb", "initdb"]
+      when: "'patroni' in pg_node_role[inventory_hostname]['roles']"
+    - role: pgbackrest
+      tags: pgbackrest
+      when: "'pgbackrest' in pg_node_role[inventory_hostname]['roles']"
+    - role: cron
+      tags: cron
+      when: "'pgbackrest' in pg_node_role[inventory_hostname]['roles']"
+    - role: postgrest
+      tags: postgrest
+      when: "'postgrest' in pg_node_role[inventory_hostname]['roles'] or 'patroni' in pg_node_role[inventory_hostname]['roles']"
+    - role: pgpitr
+      tags: pgpitr
+      when: pitr_timestamp is defined and pitr_timestamp != '' and "'patroni' in pg_node_role[inventory_hostname]['roles']"

@@ -1,0 +1,28 @@
+[program:pgdog]
+autorestart = true
+autostart = true
+command = bash -c 'exec /usr/bin/docker run \
+  --rm --pid="host" \
+  --net="host" \
+  --user $(id -u pgdog):$(id -g pgdog) \
+  -v /etc/localtime:/etc/localtime:ro \
+  -v /etc/timezone:/etc/timezone:ro \
+  -v {{ pgdog_dir }}:/pgdog \
+  --workdir / \
+  --name pgdog \
+  ghcr.io/pgdogdev/pgdog:{{ pgdog_version }} \
+  pgdog \
+  -c /pgdog/pgdog.toml \
+  -u /pgdog/users.toml'
+directory = {{ pgdog_dir }}
+environment =
+redirect_stderr = false
+stderr_logfile = {{ pgdog_dir }}/logs/pgdog-err.log
+stderr_logfile_maxbytes= 20MB
+stderr_logfile_backups = 5
+stdout_logfile = {{ pgdog_dir }}/logs/pgdog-out.log
+stdout_logfile_maxbytes = 50MB
+stdout_logfile_backups = 5
+user = root
+startsecs = 60
+startretries = 3

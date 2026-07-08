@@ -1,0 +1,11 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/patroni-wait
+
+# wait for patroni to start, and postgresql socket to be available
+- name: Wait for patroni to start
+  wait_for:
+    host: "{{ ansible_default_ipv4.address }}"
+    port: 5432
+    state: started
+    timeout: 120

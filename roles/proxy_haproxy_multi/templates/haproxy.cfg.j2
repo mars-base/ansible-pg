@@ -1,0 +1,114 @@
+global
+    log         127.0.0.1 local2
+    maxconn     30000                    # totol: nbproc * maxconn
+
+    chroot      /var/lib/haproxy
+    pidfile     /var/run/haproxy.pid
+    user        haproxy
+    group       haproxy
+    daemon
+
+    # turn on stats unix socket
+    # stats socket /var/lib/haproxy/stats
+
+    # utilize system-wide crypto-policies
+    #ssl-default-bind-ciphers PROFILE=SYSTEM
+    #ssl-default-server-ciphers PROFILE=SYSTEM
+
+defaults
+{% if ha_mode == "http" %}
+    # http config
+    mode                    http
+    option                  httplog
+    option                  http-server-close
+    option forwardfor       except 127.0.0.0/8
+    timeout                 http-request    10s
+    timeout                 http-keep-alive 10s
+{% endif %}
+{% if ha_mode == "tcp" %}
+    # tcp config
+    mode                    tcp
+    option                  tcplog
+{% endif %}
+
+    option                  dontlognull
+    option                  redispatch
+    option                  abortonclose
+
+    # common config
+    timeout queue           1m
+    timeout connect         10s
+    timeout client          1m
+    timeout server          1m
+    timeout check           10s
+
+    maxconn                 30000
+    retries                 3
+    log                     global
+
+{% if ha_stats_enable %}
+listen stats
+    bind *:{{ ha_stats_port }}
+    mode http
+    stats enable
+    stats uri /haproxy/stats
+    stats realm HAProxy\ Statistics
+    stats auth {{ ha_stats_user }}:{{ ha_stats_password }}
+{% endif %}
+
+{% for ha in ha_proxy_list %}
+
+frontend main-{{ ha.ha_listen_port }}
+{% if ha.enable_https %}
+    # just for https
+    bind *:{{ ha.ha_listen_port }} ssl crt /etc/haproxy/{{ ha.ha_ca_name }}
+    # http config
+    mode                    http
+    option                  httplog
+    option                  http-server-close
+    timeout                 http-request    10s
+    timeout                 http-keep-alive 10s
+{% else %}
+    bind *:{{ ha.ha_listen_port }}
+{% endif %}
+    default_backend         app-{{ ha.ha_listen_port }}
+
+backend app-{{ ha.ha_listen_port }}
+{% if ha.enable_https %}
+    mode                    http
+    option                  httplog
+{% endif %}
+    balance     roundrobin
+{% for it in ha.ha_backend %}
+    server      app-{{ ha.ha_listen_port }}-{{ it.id }}  {{ it.addr }}  check
+{% endfor %}
+
+{% endfor %}
+
+
+{% if  ha_patroni_postgres_list is defined and ha_patroni_postgres_list | length > 0 %}
+
+listen postgresql_primary
+    bind *:5000
+    mode tcp
+    option tcplog
+    option httpchk GET /primary
+    http-check expect status 200
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+{% for it in ha_patroni_postgres_list %}
+    server postgresql_{{ it.name }} {{ it.addr }} maxconn 100 check port 8008
+{% endfor %}
+
+listen postgresql_replicas
+    bind *:5001
+    mode tcp
+    option tcplog
+    option httpchk GET /replica
+    http-check expect status 200
+    balance roundrobin
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+{% for it in ha_patroni_postgres_list %}
+    server postgresql_{{ it.name }} {{ it.addr }} maxconn 100 check port 8008
+{% endfor %}
+
+{% endif %}

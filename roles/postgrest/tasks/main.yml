@@ -1,0 +1,125 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/postgrest
+- block:
+  - name: Select the primary node by patroni api
+    uri:
+      url: "http://{{ ansible_default_ipv4.address }}:8008/"
+      method: GET
+      return_content: true
+      status_code: 200
+      body_format: json
+    register: _patroni_primary
+    changed_when: true
+    failed_when: false
+
+  - name: Show the primary node info
+    debug:
+      msg: "Patroni node info:\nhost:{{ _patroni_primary.json.patroni.name }}\nrole:{{ _patroni_primary.json.role }}"
+
+  - name: Grant annonymous role permission on database
+    community.postgresql.postgresql_query:
+      db: "{{ postgrest_db}}"
+      login_user: "{{ postgres_admin }}"
+      login_password: "{{ postgres_admin_password }}"
+      login_host: "{{ postgres_host | default('localhost') }}"
+      login_port: "{{ postgres_port | default(5432) }}"
+      query: |
+        -- Create anno role if not exists
+        -- CREATE ROLE {{ postgrest_annonymous_role }} NOLOGIN;
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+              SELECT FROM pg_roles WHERE rolname = '{{ postgrest_annonymous_role }}'
+          ) THEN
+              CREATE ROLE {{ postgrest_annonymous_role }} NOLOGIN;
+          END IF;
+        END
+        $$;
+        -- Grant anno role to postgrest user
+        GRANT {{ postgrest_annonymous_role }} TO {{ postgrest_user }};
+        -- Grant usage on schema
+        GRANT USAGE ON SCHEMA {{ postgrest_schema }} TO {{ postgrest_annonymous_role }};
+        -- Grant select on all tables in {{ postgrest_schema }} schema
+        GRANT SELECT ON ALL TABLES IN SCHEMA {{ postgrest_schema }} TO {{ postgrest_annonymous_role }};
+        -- Ensure future tables also have select permission
+        ALTER DEFAULT PRIVILEGES IN SCHEMA {{ postgrest_schema }} GRANT SELECT ON TABLES TO {{ postgrest_annonymous_role }};
+    when: _patroni_primary.json.role == "primary"
+  when: "'patroni' in pg_node_role[inventory_hostname]['roles']"
+
+
+- block:
+  - name: Install dependencies
+    apt:
+      name: "{{ item }}"
+      state: present
+      update_cache: true
+    loop:
+      - curl
+      - ca-certificates
+      - postgrest
+    register: _install_result
+    failed_when: _install_result.failed
+
+  - name: Generate postgrest config file
+    template:
+      src: postgrest.conf.j2
+      dest: /etc/postgrest/postgrest.conf
+      owner: root
+      group: root
+      mode: '0644'
+    notify: Reload postgrest
+
+  - name: Enable and start postgrest service
+    systemd:
+      name: postgrest
+      state: started
+      enabled: true
+
+  - name: Show postgrest service status
+    shell: systemctl status postgrest
+    register: _postgrest_status
+    failed_when: _postgrest_status.rc != 0
+  - name: Show postgrest service status
+    debug:
+      msg: "Postgrest service status:\n{{ _postgrest_status.stdout }}"
+
+  - name: Show postgrest web url
+    debug:
+      msg: "Postgrest web url: http://{{ postgrest_server_host }}:{{ postgrest_server_port }}"
+
+  - name: Generate JWT token for 100 years
+    shell: |
+      # 密钥
+      secret="{{ postgrest_jwt_secret }}"
+      # 过期时间（当前时间 + 100年）
+      exp=$(date +%s -d "+100 years")
+      # 构建 payload
+      payload=$(cat <<EOF
+      {
+        "role": "{{ postgrest_user }}",
+        "exp": $exp
+      }
+      EOF
+      )
+      # 生成 header
+      header=$(echo -n '{"alg":"HS256","typ":"JWT"}' | base64 | tr -d '=' | tr '/+' '_-' | tr -d '\n')
+      # 生成 payload
+      payload_encoded=$(echo -n "$payload" | base64 | tr -d '=' | tr '/+' '_-' | tr -d '\n')
+      # 生成签名
+      signature=$(echo -n "$header.$payload_encoded" | openssl dgst -sha256 -hmac "$secret" -binary | base64 | tr -d '=' | tr '/+' '_-' | tr -d '\n')
+      # 组合 token
+      token="$header.$payload_encoded.$signature"
+      echo "$token"
+    args:
+      executable: /bin/bash
+    register: _jwt_token
+    failed_when: _jwt_token.rc != 0
+    tags: [jwt-token]
+  - debug:
+      msg: |
+        JWT token expired after 100 years
+        Header: "Authorization: Bearer {{ _jwt_token.stdout }}"
+    tags: [jwt-token]
+  when: "'postgrest' in pg_node_role[inventory_hostname]['roles']"
+

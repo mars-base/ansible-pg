@@ -1,0 +1,43 @@
+---
+- name: create cron directory
+  file:
+    owner: "root"
+    group: "root"
+    path: "{{ item }}"
+    state: directory
+    recurse: true
+  loop:
+    - "{{ cron_scripts_dir }}"
+    - "{{ cron_log_dir }}"
+
+- name: sync files to hosts
+  synchronize:
+    src: "scripts"
+    dest: "{{ cron_base_dir }}"
+    mode: push
+    recursive: yes
+    delete: yes
+  tags: [sync]
+
+- name: generate secrets key
+  shell: echo -n "{{ cron_secret_key }}" > {{ cron_secret_key_file }}
+
+- name: change secret key mode
+  file:
+    path: "{{ cron_secret_key_file }}"
+    owner: root
+    group: root
+    mode: "u=rw,g=,o="
+
+- name: build cron task content
+  template:
+    src: "cron.j2"
+    dest: "{{ cron_base_dir }}/cron"
+    owner: root
+    group: root
+    mode: "0755"
+    backup: no
+
+- name: apply cron task by file
+  shell: >
+    crontab -u root {{ cron_base_dir }}/cron

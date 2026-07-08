@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#Time    :   2026/02/03 14:53:31
+#Author  :   ansible-pg
+
+# Description: Backup PostgreSQL database using pgbackrest
+
+log_dir="/srv/cron/logs"
+log_file="$log_dir/pg-backup.log"
+mkdir -p $log_dir
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] The pg-backup.sh script is running on $(hostname)" | tee -a $log_file
+
+sudo -iu postgres \
+    pgbackrest --stanza=pg-single --log-level-console=info --type=full backup \
+    >> $log_file 2>&1
+echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Backup stanza pg-single is done" | tee -a $log_file
+
+sudo -iu postgres \
+    pgbackrest --stanza=ha --log-level-console=info --type=full backup \
+    >> $log_file 2>&1
+echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Backup stanza ha is done" | tee -a $log_file
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Log file: $log_file" | tee -a $log_file

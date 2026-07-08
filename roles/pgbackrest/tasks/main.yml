@@ -1,0 +1,106 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/patroni-pgbackrest
+
+- name: Validate pgbackrest ssh key variables
+  fail:
+    msg: |
+      Missing pgbackrest ssh key configuration.
+      Please configure pgbackrest_ssh_private_key and pgbackrest_ssh_public_key
+      in group_vars/<group>/pg_all.yaml, or copy from the corresponding
+      pg_all.yaml.example and replace with real key content.
+  when: >
+    pgbackrest_ssh_private_key is not defined or
+    pgbackrest_ssh_public_key is not defined or
+    pgbackrest_ssh_private_key == 'YOUR_PRIVATE_KEY_CONTENT_HERE' or
+    pgbackrest_ssh_public_key == 'YOUR_PUBLIC_KEY_CONTENT_HERE' or
+    pgbackrest_ssh_private_key | length == 0 or
+    pgbackrest_ssh_public_key | length == 0
+
+- name: Install pgbackrest apt package
+  apt:
+    name: pgbackrest
+    state: present
+
+- name: Install pgbackrest ssh public key to postgres user
+  authorized_key:
+    user: "{{ pgbackrest_user }}"
+    state: present
+    key: "{{ pgbackrest_ssh_public_key }}"
+
+- name: Copy ssh private key to backup host
+  copy:
+    dest: "{{ pgbackrest_home }}/.ssh/id_rsa"
+    content: "{{ pgbackrest_ssh_private_key }}"
+    owner: "{{ pgbackrest_user }}"
+    group: "{{ pgbackrest_user }}"
+    mode: 0600
+
+- name: Set ssh config
+  blockinfile:
+    dest: "{{ pgbackrest_home }}/.ssh/config"
+    block: |
+      StrictHostKeyChecking no
+    owner: "{{ pgbackrest_user }}"
+    group: "{{ pgbackrest_user }}"
+    mode: 0644
+    create: yes
+
+- name: Create backup dir
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ pgbackrest_user }}"
+    group: "{{ pgbackrest_user }}"
+  loop:
+    - "{{ pgbackrest_backup_dir }}"
+    - "{{ pgbackrest_backup_log_dir }}"
+  when: inventory_hostname == pgbackrest_backup_server
+
+- name: Create pgbackrest backup server config
+  template:
+    dest: "/etc/pgbackrest.conf"
+    src: "pgbackrest-backup.conf.j2"
+    owner: "{{ pgbackrest_user }}"
+    group: "{{ pgbackrest_user }}"
+    mode: 0644
+  when: inventory_hostname == pgbackrest_backup_server
+
+- name: Create pgbackrest client config
+  template:
+    dest: "/etc/pgbackrest.conf"
+    src: "pgbackrest.conf.j2"
+    owner: "{{ pgbackrest_user }}"
+    group: "{{ pgbackrest_user }}"
+    mode: 0644
+  when: inventory_hostname != pgbackrest_backup_server
+
+- name: Config postgres user password
+  template:
+    dest: "{{ pgbackrest_home }}/.pgpass"
+    src: "pgpass.j2"
+    owner: "{{ pgbackrest_user }}"
+    group: "{{ pgbackrest_user }}"
+    mode: 0600
+
+
+- block:
+
+  - name: Create backup stanza, switch to postgres user
+    command: "sudo -iu postgres pgbackrest --stanza={{ pgbackrest_stanza }} --log-level-console=info stanza-create"
+    register: _create_backup_stanza
+    changed_when: _create_backup_stanza.rc == 0
+    failed_when: _create_backup_stanza.rc != 0
+  - debug:
+      msg: "{{ _create_backup_stanza.stdout }}"
+
+  - name: Check backup stanza, switch to postgres user
+    command: "sudo -iu postgres pgbackrest --stanza={{ pgbackrest_stanza }} --log-level-console=info check"
+    register: _check_backup_stanza
+    changed_when: _check_backup_stanza.rc == 0
+    failed_when: _check_backup_stanza.rc != 0
+  - debug:
+      msg: "{{ _check_backup_stanza.stdout }}"
+
+
+  when: inventory_hostname == pgbackrest_backup_server

@@ -1,0 +1,7 @@
+---
+py3venv_dir: /srv/py3venv
+py3venv_pip_pkgs:
+- requests
+- web.py
+- urllib3
+- PyYAML

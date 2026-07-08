@@ -1,0 +1,68 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/pgdog
+- name: create user
+  ansible.builtin.user:
+    name: pgdog
+    shell: /usr/sbin/nologin
+
+- name: Create directory
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: pgdog
+    group: pgdog
+  loop:
+    - "{{ pgdog_dir }}"
+    - "{{ pgdog_dir }}/logs"
+
+- name: Pull pgdog image
+  docker_image:
+    name: "{{ pgdog_image }}"
+    source: pull
+    tag: "{{ pgdog_version }}"
+
+- name: Create pgdog config file
+  template:
+    src: "{{ item }}"
+    dest: "{{ pgdog_dir }}/{{ item }}"
+  loop:
+    - "pgdog.toml"
+    - "users.toml"
+  notify: "Restart pgdog"
+  tags: ["config"]
+
+- name: create supervisor conf
+  template:
+    src: "supervisor/pgdog.conf.j2"
+    dest: "/etc/supervisor/conf.d/pgdog.conf"
+    owner: pgdog
+    group: pgdog
+    mode: "0644"
+    backup: no
+  notify: "Restart pgdog"
+
+- name: reread and update supervisor
+  shell: >
+    supervisorctl reread && \
+    supervisorctl update && \
+    supervisorctl start pgdog
+
+- name: Wait for pgdog to start
+  wait_for:
+    host: "{{ pgdog_host }}"
+    port: "{{ pgdog_port }}"
+    timeout: 30
+
+- name: Tips for connecting to shard databases
+  debug:
+    msg: |
+      Connect to shard databases:
+      PGPASSWORD=[...] psql -h {{ pgdog_host }} -p {{ pgdog_port }} -U {{ pgdog_users[0].name }} -d {{ pgdog_databases[0].name }} -c 'select * from users ;'
+      Metric endpoint: http://{{ pgdog_host }}:{{ pgdog_openmetrics_port }}/metrics
+
+- name: Show pgdog databases
+  debug:
+    msg: |
+      pgdog databases:
+      {{ pgdog_databases | to_nice_yaml }}

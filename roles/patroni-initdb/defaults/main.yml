@@ -1,0 +1,44 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/patroni-pg
+patroni_cluster_name: "batman"
+postgres_host: "{{ ansible_default_ipv4.address }}"
+postgres_port: 5432
+postgres_admin: postgres
+postgres_admin_password: CHANGEME
+postgres_dba_password: CHANGEME
+postgres_dev_password: CHANGEME
+postgres_prod_password: CHANGEME
+postgres_readonly_password: CHANGEME
+postgres_users:
+  - name: dba
+    password: "{{ postgres_dba_password }}"
+  - name: dev
+    password: "{{ postgres_dev_password }}"
+  - name: prod
+    password: "{{ postgres_prod_password }}"
+  - name: ro
+    password: "{{ postgres_readonly_password }}"
+postgres_dbs:
+  - dev
+  - prod
+postgres_privs:
+  - db: dev
+    user: dba,dev
+    type: database
+    priv: ALL
+    schema: public
+    schema_priv: CREATE,USAGE
+  - db: prod
+    user: dba,prod
+    type: database
+    priv: ALL
+    schema: public
+    schema_priv: CREATE,USAGE
+  - db: dev
+    user: ro # 只读用户样例
+    type: table
+    priv: SELECT
+    schema: public
+    auto_inherit: true     # 是否从创建者角色继承权限
+    table_creator: dba     # 表创建者角色

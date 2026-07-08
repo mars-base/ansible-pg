@@ -1,0 +1,37 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/pgbouncer
+pgbouncer_dir: /srv/pgbouncer
+pgbouncer_version: 1.24.1
+pgbouncer_conf: /etc/pgbouncer/pgbouncer.ini
+pgbouncer_userlist: /etc/pgbouncer/userlist.txt
+pgbouncer_listen_port: 6432
+pgbouncer_listen_addr: 127.0.0.1
+pgbouncer_admin_users: "postgres,admin"
+# pgbouncer 认证算法，可选 md5 或 scram-sha-256（推荐）
+# 注意：改为 scram-sha-256 时需与 postgres_hba_auth_method 保持一致，并重置所有用户密码
+pgbouncer_auth_type: md5
+pgbouncer_admin_password: CHANGEME
+pgbouncer_dba_password: CHANGEME
+pgbouncer_users:
+  - name: admin
+    password: "{{ pgbouncer_admin_password }}"
+  - name: dba
+    password: "{{ pgbouncer_dba_password }}"
+pgbouncer_databases:
+  - name: dev
+    host: "127.0.0.1"
+    port: 5432
+    dbname: dev
+  - name: prod
+    host: "127.0.0.1"
+    port: 5432
+    dbname: prod
+# Unix socket 配置
+# pgbouncer_socket_dir: "/tmp"
+pgbouncer_socket_dir: "{{ pgbouncer_dir }}"
+pgbouncer_socket_mode: "0777"
+pgbouncer_socket_group: "postgres"
+pgbouncer_pool_mode: session
+pgbouncer_max_client_conn: 100
+pgbouncer_default_pool_size: 20
