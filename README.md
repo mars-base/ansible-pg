@@ -195,6 +195,109 @@ sudo crontab -l -u root | grep backup
 | `8008` | 健康检查端口 | Patroni REST API，HAProxy 通过此端口判断节点角色 |
 | `8090` | stats 统计页面 | HTTP，访问 `/haproxy/stats` 查看代理状态 |
 
+### PostgREST RESTful API
+
+PostgREST 自动将 PostgreSQL 数据库的表、视图、函数转化为 RESTful API，无需编写后端代码。
+
+**配置**：
+- 数据库：通过 HAProxy primary (`192.168.1.13:5000`) 连接
+- Schema：`public`
+- 匿名角色：`anno`（未认证请求）
+- 认证：JWT token（`Authorization: Bearer <token>`）
+- 监听端口：`4000`
+
+**常用 API 示例**：
+
+```bash
+# 查询所有记录
+curl http://192.168.1.13:4000/department
+
+# 条件筛选
+curl "http://192.168.1.13:4000/department?id=eq.1"
+curl "http://192.168.1.13:4000/department?name=like.*admin*"
+curl "http://192.168.1.13:4000/department?id=gt.5&id=lt.10"  # AND 条件
+
+# 分页
+curl "http://192.168.1.13:4000/department?limit=10&offset=0"
+
+# 排序
+curl "http://192.168.1.13:4000/department?order=name.desc"
+curl "http://192.168.1.13:4000/department?order=id.asc,name.desc"  # 多字段排序
+
+# 选择特定字段
+curl "http://192.168.1.13:4000/department?select=id,name"
+
+# 插入数据
+curl -X POST http://192.168.1.13:4000/department \
+  -H "Content-Type: application/json" \
+  -d '{"name": "New Department"}'
+
+# 更新数据
+curl -X PATCH "http://192.168.1.13:4000/department?id=eq.1" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Updated Department"}'
+
+# 删除数据
+curl -X DELETE "http://192.168.1.13:4000/department?id=eq.1"
+
+# 获取 OpenAPI 文档
+curl http://192.168.1.13:4000/
+```
+
+**JWT 认证**：
+
+PostgREST 权限模型：
+- 未认证请求：使用 `db-anon-role`（默认 `anno`），仅有 SELECT 权限
+- 已认证请求：使用 JWT 中的 `role` 字段对应 PostgreSQL 角色权限
+
+部署时自动生成 100 年有效期的 JWT token，输出在 Ansible playbook 的 "Generate JWT token" 步骤中。
+
+```bash
+# 使用 JWT token 认证（需替换为实际 token）
+JWT="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiZGJhIiwiZXhwIjo0OTQwNDcxMjc5fQ.xxx"
+
+# 读取（anno 也可，但已认证角色权限更大）
+curl -H "Authorization: Bearer $JWT" \
+  http://192.168.1.13:4000/department
+
+# 插入（需要 JWT 认证 + 对应角色有 INSERT 权限）
+curl -X POST http://192.168.1.13:4000/department \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $JWT" \
+  -d '{"name": "Engineering"}'
+
+# 更新
+curl -X PATCH "http://192.168.1.13:4000/department?id=eq.1" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $JWT" \
+  -d '{"name": "Updated"}'
+
+# 删除
+curl -X DELETE "http://192.168.1.13:4000/department?id=eq.1" \
+  -H "Authorization: Bearer $JWT"
+```
+
+JWT 生成说明（HS256 算法）：
+```bash
+# Header:  {"alg": "HS256", "typ": "JWT"}
+# Payload: {"role": "dba", "exp": <unix_timestamp>}
+# 签名密钥: pg_all.yaml 中的 postgrest_jwt_secret（至少 32 字符）
+#
+# 可用 Python 快速生成：
+#   import jwt, time
+#   token = jwt.encode({"role": "dba", "exp": int(time.time()) + 3600*24*365*100},
+#                      "YOUR_JWT_SECRET", algorithm="HS256")
+```
+
+> 注意：写入操作（POST/PATCH/DELETE）返回 403 时，说明 JWT 中的 `role` 用户对目标表没有对应权限，需在 PostgreSQL 中 `GRANT` 授权。
+
+**检查状态**：
+
+```bash
+systemctl status postgrest --no-pager
+curl -s http://192.168.1.13:4000/ | python3 -m json.tool  # OpenAPI 文档
+```
+
 ### 测试 pgbouncer 连接
 
 ```bash

@@ -153,9 +153,19 @@ pgbackrest_patroni_config: |
   pg1-socket-path={{ pgbackrest_socket_dir }}
   pg1-database=postgres
 
-# postgrest JWT secret（至少 32 字符）
+# postgrest 配置，作为 postgresql 数据库的 RESTful API 服务器
+postgrest_user: dba
 postgrest_password: "{{ postgres_dba_password }}"
+postgrest_host: "{{ ansible_default_ipv4.address }}"
+postgrest_port: 5433
+postgrest_db: dev
+postgrest_schema: public
+postgrest_annonymous_role: anno
+postgrest_server_host: "{{ ansible_default_ipv4.address }}"
+postgrest_server_port: 4000
 postgrest_jwt_secret: "CHANGEME_CHANGEME_CHANGEME_CHANGEME"
+postgrest_jwt_aud: postgrest
+postgrest_db_pool: 10
 
 # patroni 配置，作为 postgresql 数据库节点的高可用管理工具
 patroni_etcd_address: "{{ ansible_default_ipv4.address }}:12379"
