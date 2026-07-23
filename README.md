@@ -102,6 +102,44 @@ ansible-playbook -e HOSTS=pg_cluster playbooks/pgdump.yaml \
 | `cron` | 配置定时备份 |
 | `postgrest` | 部署 PostgREST |
 
+## 检查各组件状态
+
+部署完成后，在目标主机上执行以下命令逐一检查组件是否正常运行：
+
+```bash
+# Patroni 集群健康状态
+curl -s http://$(hostname -I | awk '{print $1}'):8008/health
+
+# etcd
+sudo supervisorctl status etcd_12380
+
+# pgbouncer
+systemctl status pgbouncer --no-pager
+
+# postgrest
+systemctl status postgrest --no-pager
+
+# pgbackrest（WAL 归档检查）
+sudo -iu postgres pgbackrest --stanza=pg-single check
+
+# pgbackrest 备份信息
+sudo -iu postgres pgbackrest --stanza=pg-single info
+
+# pgdog 多实例
+sudo supervisorctl status pgdog-production pgdog-dev
+
+# cron 定时备份
+sudo crontab -l -u root | grep backup
+```
+
+### 测试 pgbouncer 连接
+
+```bash
+PGPASSWORD=<dba_password> PGUSER=dba PGHOST=<host_ip> PGPORT=5433 PGDATABASE=postgres /usr/bin/psql -c "SELECT current_database(), version()"
+```
+
+> 注意：Debian 系统的 `/usr/bin/psql` 是 pg_wrapper 包装脚本，通过 URI 连接会冲突，建议使用环境变量方式或 `/usr/lib/postgresql/<version>/bin/psql` 直连。
+
 ## 注意事项
 
 1. 首次使用请从对应的 `.example` 文件复制并修改。
