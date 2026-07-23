@@ -47,19 +47,18 @@
 #      pg_extensions_on:
 #        - { db: 'dev', extension: 'citus' }
 #
-#   2. 在所有节点更新 Patroni 配置（自动重启 PostgreSQL）：
+#   2. 在所有节点更新 Patroni 配置并重启 PostgreSQL：
 #
-#      ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
-#        -e HOSTS=pg_single_1 -t patroni-config
-#      ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
-#        -e HOSTS=pg_single_2 -t patroni-config
-#      ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
-#        -e HOSTS=pg_single_3 -t patroni-config
-#
-#      # 或者一次性执行所有节点：
+#      # 更新配置（生成 pg.yaml）
 #      for host in pg_single_1 pg_single_2 pg_single_3; do
 #        ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
 #          -e HOSTS=$host -t patroni-config
+#      done
+#
+#      # 重启所有节点的 PostgreSQL（使 shared_preload_libraries 生效）
+#      for host in pg_single_1 pg_single_2 pg_single_3; do
+#        ansible -i hosts.ini $host -b -m shell \
+#          -a "supervisorctl restart patroni"
 #      done
 #
 #   3. 在所有节点安装扩展包并创建扩展：
