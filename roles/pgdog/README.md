@@ -75,11 +75,30 @@ PGPASSWORD=dba psql -h 127.0.0.1 -p 6432 -U dba -d pgdog -c '\dt;'
 PGPASSWORD=dba psql -h 127.0.0.1 -p 6433 -U dba -d pgdog -c '\dt;'
 ```
 
+## 分片键数据类型
+
+PgDog 目前支持以下分片键数据类型（`sharded_tables` 中的 `data_type` 字段）：
+
+| `data_type` | 说明 |
+|-------------|------|
+| `bigint` | 64 位有符号整数 |
+| `uuid` | UUID v4 |
+| `varchar` | 可变长度字符串 |
+
+底层分片机制理论上兼容任何 PostgreSQL 数据类型，当前包装器覆盖了以上三种，更多类型持续完善中。
+
 ## 创建分片表
 
 ```sql
+-- bigint 分片键
 CREATE TABLE users (
     id BIGINT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL
+);
+
+-- uuid 分片键
+CREATE TABLE users (
+    id UUID PRIMARY KEY,
     name VARCHAR(50) NOT NULL
 );
 ```

@@ -71,6 +71,9 @@
     - role: postgrest
       tags: postgrest
       when: "'postgrest' in pg_node_role[inventory_hostname]['roles'] or 'patroni' in pg_node_role[inventory_hostname]['roles']"
+    - role: pgdog
+      tags: pgdog
+      when: "'pgdog' in groups and inventory_hostname in groups['pgdog']"
     - role: pgpitr
       tags: pgpitr
       when: pitr_timestamp is defined and pitr_timestamp != '' and "'patroni' in pg_node_role[inventory_hostname]['roles']"

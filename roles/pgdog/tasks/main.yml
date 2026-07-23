@@ -115,7 +115,7 @@
     msg: |
       pgdog instance '{{ item.name }}':
         Connect: PGPASSWORD=[...] psql -h {{ pgdog_host }} -p {{ item.port }} -U {{ item.users[0].name }} -d {{ item.databases[0].name }}
-        Metrics: http://{{ pgdog_host }}:{{ pgdog_openmetrics_port | int + ansible_loop.index0 }}/metrics
+        Metrics: http://{{ pgdog_host }}:{{ item.openmetrics_port | default(pgdog_openmetrics_port) }}/metrics
   loop: "{{ _pgdog_instances }}"
   loop_control:
     label: "{{ item.name }}"
