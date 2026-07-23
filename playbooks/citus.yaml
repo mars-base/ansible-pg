@@ -1,6 +1,62 @@
 ---
-
-# 组件Citus 分布式Postgresql数据库系统
+# ============================================================================
+# Citus 分布式 PostgreSQL 数据库部署剧本
+# ============================================================================
+#
+# ⚠️ 重要：架构要求
+#
+#   Citus 必须配合多个 Patroni 单节点使用，不能使用 Patroni HA 自动故障切换！
+#
+#   原因：Patroni 自动 failover 后，Citus 元数据（pg_dist_node）不会自动更新，
+#   导致 coordinator 找不到 worker、worker 找不到 coordinator，整个分布式集群不可用。
+#
+#   正确架构：
+#     dev1 (Patroni 单节点) ←→ coordinator + worker
+#     dev2 (Patroni 单节点) ←→ worker
+#     dev3 (Patroni 单节点) ←→ worker
+#
+#   错误架构：
+#     Patroni HA 集群（1 primary + N replica）× Citus ❌
+#
+# ============================================================================
+#
+# 作用：
+#   1. 在 coordinator 和 worker 节点上安装 citus 扩展
+#   2. 配置节点间 DNS 解析
+#   3. 注册 coordinator 和 worker 节点到 citus 集群
+#   4. 创建多租户 schema（可选）
+#
+# 前置条件 - 安装 citus 扩展：
+#   在 group_vars/<cluster>/pg_all.yaml 中添加 citus 到扩展列表：
+#
+#     pg_extensions:
+#       - "pg_cron"
+#       - "citus"          # <-- 添加这行
+#
+#     pg_extensions_on:
+#       - { db: 'dev', extension: 'citus' }  # <-- 在目标库启用
+#
+#   然后运行：
+#     ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
+#       -e HOSTS=<cluster_name> -t pg-extension
+#
+#   这会在所有节点安装 citus 包并执行 CREATE EXTENSION。
+#
+# 使用本剧本配置集群：
+#   ansible-playbook -i hosts.ini playbooks/citus.yaml \
+#     -e _coordinator_hostname=dev1 \
+#     -e _worker_hostname=dev2 \
+#     -e _citus_to_db=dev \
+#     -e _pg_user=admin \
+#     -e _pg_password=admin
+#
+# 验证集群状态：
+#   ansible-playbook -i hosts.ini playbooks/citus.yaml \
+#     -e _coordinator_hostname=dev1 -e _worker_hostname=dev2 \
+#     -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin \
+#     -t verify
+#
+# ============================================================================
 
 # 参数说明
 # HOSTS: 主机列表
