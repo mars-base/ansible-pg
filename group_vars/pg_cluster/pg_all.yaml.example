@@ -32,7 +32,6 @@ ha_stats_user: admin
 ha_stats_password: CHANGEME
 ha_stats_port: 8090
 ha_stats_enable: true
-ha_proxy_list: []
 ha_patroni_postgres_list:
   - name: pg-patroni-01
     addr: "{{ hostvars['pg-patroni-01']['ansible_host'] | default('192.168.1.11') }}:5433" # through pgbouncer proxy
