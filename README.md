@@ -45,7 +45,7 @@ cp group_vars/pg_cluster/pg_all.yaml.example group_vars/pg_cluster/pg_all.yaml
 # 建议使用 Ansible Vault 加密敏感字段
 ```
 
-4. **重点**：修改 `group_vars/pg_cluster/pg_all.yaml` 或 `group_vars/pg_fish/pg_all.yaml`：
+4. **重点**：修改 `group_vars/pg_cluster/pg_all.yaml` 或 `group_vars/pg_single/pg_all.yaml`：
    - 节点角色 `pg_node_role`
    - PostgreSQL 管理员/业务用户密码
    - etcd 地址、pgbackrest 仓库路径与 stanza

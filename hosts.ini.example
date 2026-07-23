@@ -7,8 +7,8 @@ pg-patroni-01 ansible_host=192.168.1.11 private_ip=192.168.1.11 ansible_user=roo
 pg-patroni-02 ansible_host=192.168.1.12 private_ip=192.168.1.12 ansible_user=root
 pg-backup ansible_host=192.168.1.13 private_ip=192.168.1.13 ansible_user=root
 
-# pg_fish: 单节点测试部署示例（etcd + patroni + pgbouncer + pgbackrest + postgrest）
-[pg_fish]
+# pg_single: 单节点测试部署示例（etcd + patroni + pgbouncer + pgbackrest + postgrest）
+[pg_single]
 pg-single ansible_host=192.168.1.10 private_ip=192.168.1.10 ansible_user=root
 
 # pgdog 分片代理测试节点
@@ -30,4 +30,4 @@ pg-backup
 # 所有 PostgreSQL 相关节点
 [pg:children]
 pg_cluster
-pg_fish
+pg_single
