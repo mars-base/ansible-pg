@@ -6,19 +6,16 @@
 pg_node_role:
   pg-patroni-01:
     roles:
-      - py3
       - patroni
       - pgbouncer
       - pgbackrest
   pg-patroni-02:
     roles:
-      - py3
       - patroni
       - pgbouncer
       - pgbackrest
   pg-backup:
     roles:
-      - py3
       - etcd
       - haproxy
       - pgbackrest
