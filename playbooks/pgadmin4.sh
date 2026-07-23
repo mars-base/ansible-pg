@@ -1,25 +1,13 @@
 #!/usr/bin/env bash
 #Time    :   2025/06/11 10:29:12
-#Author  :   ansible-pg
+#Author  :   fish
+#Desc    :   Setup pgadmin4 Docker container
 
-# Setup pgadmin4 client on web browser
+set -euo pipefail
 
-# checking params and help tips
-paramsLimit=2
-[[ $# -lt $paramsLimit ]] && {
-    cat<<EOF
-usage of $0:
-limit not less $paramsLimit params: [email: optional, default: admin@domain.com] [password: optional, default: admin]
-EOF
-    exit 1
-}
-
-email=$1
-password=$2
-
-# set default params
-email=${email:-admin@domain.com}
-password=${password:-admin}
+# 参数说明
+email=${1:-admin@domain.com}
+password=${2:-admin}
 
 cat<<EOF
 [TIPS] The default binary paths set in the container are as follows:
@@ -35,54 +23,48 @@ DEFAULT_BINARY_PATHS = {
 EOF
 
 containerName="pgadmin4"
-echo "[INFO] The container name is $containerName"
 dataDir="/srv/pgadmin4"
-sudo mkdir -p $dataDir
-echo "[INFO] The data directory is $dataDir"
 
-# create pgadmin user with nologin option, if not exist, UID/GID is 5050
-echo "[INFO] Create pgadmin user with nologin option..."
-id pgadmin > /dev/null
-if [[ $? -ne 0 ]]; then
-    echo "[INFO] The pgadmin user is not exist, create it..."
-    sudo useradd -M -s /sbin/nologin -U -u 5050 pgadmin
-    echo "[INFO] The pgadmin user is created"
-else
-    echo "[INFO] The pgadmin user is exist"
+echo "[INFO] Container name: $containerName"
+echo "[INFO] Data directory: $dataDir"
+echo "[INFO] Email: $email"
+
+# 创建数据目录
+sudo mkdir -p "$dataDir"
+
+# 创建 pgadmin 用户（UID/GID 5050）
+if ! id pgadmin > /dev/null 2>&1; then
+    echo "[INFO] Creating pgadmin user (UID 5050)..."
+    sudo useradd -M -s /usr/sbin/nologin -U -u 5050 pgadmin
 fi
 
-# change dataDir owner to pgadmin user
-echo "[INFO] Change dataDir owner to pgadmin user..."
-sudo chown -R pgadmin:pgadmin $dataDir
-echo "[INFO] The dataDir owner is changed"
-# check docker is installed
-which docker > /dev/null
-if [[ $? -ne 0 ]]; then
-    echo "[ERROR] The docker is not installed"
+# 修改数据目录权限
+sudo chown -R pgadmin:pgadmin "$dataDir"
+
+# 检查 Docker
+if ! command -v docker > /dev/null 2>&1; then
+    echo "[ERROR] Docker not installed"
     exit 1
 fi
 
-# check docker image dpage/pgadmin4 is exist
-sudo docker image ls | grep dpage/pgadmin4 > /dev/null
-if [[ $? -ne 0 ]]; then
-    echo "[ERROR] The docker image dpage/pgadmin4 is not exist"
-    exit 1
+# 检查并拉取镜像
+if ! docker image ls | grep -q dpage/pgadmin4; then
+    echo "[INFO] Pulling dpage/pgadmin4 image..."
+    docker pull dpage/pgadmin4
 fi
 
-# update pgadmin4 container
-echo "[INFO] Update pgadmin4 container..."
-sudo docker pull dpage/pgadmin4 && echo "[INFO] The pgadmin4 container is updated"
-
-# steup pgadmin4 container
-echo "[INFO] Setup pgadmin4 container..."
-echo "[INFO] Click web address: http://127.0.0.1:80"
-echo "[INFO] The default email is $email"
-echo "[INFO] The default password is $password"
-sudo docker run \
+# 启动容器
+echo "[INFO] Starting pgadmin4 container..."
+docker run \
     -d \
+    --name "$containerName" \
     --net host \
-    --name $containerName \
-    -e PGADMIN_DEFAULT_EMAIL=$email \
-    -e PGADMIN_DEFAULT_PASSWORD=$password \
-    -v $dataDir:/var/lib/pgadmin \
-    dpage/pgadmin4 && echo "[INFO] The pgadmin4 container is setup ok"
+    -e PGADMIN_DEFAULT_EMAIL="$email" \
+    -e PGADMIN_DEFAULT_PASSWORD="$password" \
+    -v "$dataDir":/var/lib/pgadmin \
+    dpage/pgadmin4
+
+echo "[INFO] pgadmin4 started successfully"
+echo "[INFO] Access: http://127.0.0.1:80"
+echo "[INFO] Email: $email"
+echo "[INFO] Password: $password"

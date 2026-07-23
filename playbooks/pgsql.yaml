@@ -74,7 +74,6 @@
         executable: /bin/bash
       async: 36000
       poll: 1
-      ignore_errors: true
       register: _out
     - debug:
         msg: "{{ _out.stdout }}\n{{ _out.stderr }}"

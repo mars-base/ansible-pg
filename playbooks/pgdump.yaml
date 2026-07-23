@@ -82,7 +82,6 @@
           pg_dump -h {{ _host }} -p {{ _port }} -U {{ _user }} -d {{ _db }} \
           --no-owner --no-privileges | gzip > $dumpFile
           echo $dumpFile
-        ignore_errors: true
         args:
           executable: /bin/bash
         async: 3600
@@ -101,7 +100,6 @@
           pg_dump -h {{ _host }} -p {{ _port }} -U {{ _user }} -d {{ _db }} \
           --no-owner --no-privileges -Fc -Z 9 -f $dumpFile
           echo $dumpFile
-        ignore_errors: true
         args:
           executable: /bin/bash
         async: 3600
@@ -116,14 +114,14 @@
       debug:
         msg: |
           # Delete the database {{ _db }} if it exists
-          /usr/lib/postgresql/{{ _pg_version }}/bin/psql postgres://<admin-user>:<admin-password>@{{ _host }}:{{ _port }}/postgres -c "drop database if exists {{ _db }}"
+          PGPASSWORD='{{ _password }}' psql -h {{ _host }} -p {{ _port }} -U {{ _user }} -d postgres -c "DROP DATABASE IF EXISTS {{ _db }};"
 
           # Use ansible playbook to initialize database
-          ap -e HOSTS=<pg-cluster-group> playbooks/pg-ha-cluster.yaml -t initdb
+          ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=<pg-cluster-group> -t initdb
 
           # Restore the dump file with gzip compression
-          zcat xx.gz | /usr/lib/postgresql/{{ _pg_version }}/bin/psql postgres://<admin-user>:<admin-password>@{{ _host }}:{{ _port }}/{{ _db }} -j <cpu-num>
+          zcat {{ _pg_dump_dir }}/pg-dump-{{ _db }}-{{ _date.stdout }}.sql.gz | PGPASSWORD='{{ _password }}' psql -h {{ _host }} -p {{ _port }} -U {{ _user }} -d {{ _db }}
 
-          # Restore the dump file with zlib compression
-          /usr/lib/postgresql/{{ _pg_version }}/bin/pg_restore -d postgres://<admin-user>:<admin-password>@{{ _host }}:{{ _port }}/{{ _db }} -j <cpu-num> <dump_file>
+          # Restore the dump file with zlib compression (parallel restore with -j flag)
+          PGPASSWORD='{{ _password }}' pg_restore -h {{ _host }} -p {{ _port }} -U {{ _user }} -d {{ _db }} -j 4 {{ _pg_dump_dir }}/pg-dump-{{ _db }}-{{ _date.stdout }}.dump
       when: _mode in ["sql", "dump"]
