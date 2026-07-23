@@ -80,7 +80,7 @@ pgbackrest_backup_pgpass: "CHANGEME" # postgres管理员用户的密码，保持
 pgbackrest_socket_dir: "{{ pgbouncer_socket_dir }}" # pgbouncer代理socket目录
 pgbackrest_pg_port: 5433  # pgbouncer代理端口，和pgbouncer监听端口一致
 pgbackrest_backup_dir: /srv/pgbackrest_ha
-pgbackrest_backup_log_dir: /var/log/pgbackrest_ha
+pgbackrest_backup_log_dir: /srv/pgbackrest_ha/logs
 pgbackrest_backup_server: pg-backup # 指定备份服务器
 pgbackrest_stanza: ha  # 设置pg集群的备份仓库名称
 
@@ -111,7 +111,7 @@ pgbackrest_backup_config: |    # 备份服务器的pgbackrest配置
 
   [{{ pgbackrest_stanza }}]
   pg1-host={{ hostvars['pg-patroni-01']['ansible_host'] | default('192.168.1.11') }}
-  pg1-host-port=32200
+  pg1-host-port=22
   pg1-host-user=postgres
   pg1-path=/srv/patroni/postgres/data
   pg1-port={{ pgbackrest_pg_port }}
@@ -119,7 +119,7 @@ pgbackrest_backup_config: |    # 备份服务器的pgbackrest配置
   pg1-database=postgres
 
   pg2-host={{ hostvars['pg-patroni-02']['ansible_host'] | default('192.168.1.12') }}
-  pg2-host-port=32200
+  pg2-host-port=22
   pg2-host-user=postgres
   pg2-path=/srv/patroni/postgres/data
   pg2-port={{ pgbackrest_pg_port }}
@@ -133,7 +133,7 @@ pgbackrest_patroni_config: | # patroni postgres节点的pgbackrest配置
   repo1-retention-full-type=time
 
   repo1-host={{ hostvars['pg-backup']['ansible_host'] | default('192.168.1.13') }}
-  repo1-host-port=32200
+  repo1-host-port=22
   repo1-host-user=postgres
 
   process-max=2

@@ -16,6 +16,6 @@ postgres_replication_trust_cidr: "127.0.0.1/32"
 # pg_hba 认证算法，可选 md5 或 scram-sha-256（推荐）
 # 注意：改为 scram-sha-256 后需对所有 pg 用户执行 ALTER USER xxx PASSWORD 'xxx' 重新存储密码
 postgres_hba_auth_method: "md5"
-postgres_archive_command: "pgbackrest --stanza=patroni_backup archive-push %p"
-postgres_restore_command: "pgbackrest --stanza=patroni_backup archive-get %f %p"
+postgres_archive_command: "pgbackrest --stanza=ha archive-push %p"
+postgres_restore_command: "pgbackrest --stanza=ha archive-get %f %p"
 postgres_shared_preload_libraries: "pg_cron,pg_stat_statements,uuid-ossp" # 注意：pgmq需要在shared_preload_libraries中添加
