@@ -26,21 +26,48 @@
 #   3. 注册 coordinator 和 worker 节点到 citus 集群
 #   4. 创建多租户 schema（可选）
 #
-# 前置条件 - 安装 citus 扩展：
-#   在 group_vars/<cluster>/pg_all.yaml 中添加 citus 到扩展列表：
+# 前置条件 - 安装 citus 扩展（多个 Patroni 单节点）：
 #
-#     pg_extensions:
-#       - "pg_cron"
-#       - "citus"          # <-- 添加这行
+#   Citus 需要在所有节点上安装扩展，假设有 3 个单节点分组：
+#   - pg_single_1 (coordinator)
+#   - pg_single_2 (worker)
+#   - pg_single_3 (worker)
 #
-#     pg_extensions_on:
-#       - { db: 'dev', extension: 'citus' }  # <-- 在目标库启用
+#   1. 在每个节点的 group_vars 中添加 citus 配置：
 #
-#   然后运行：
-#     ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
-#       -e HOSTS=<cluster_name> -t pg-extension
+#      # group_vars/pg_single_1/pg_all.yaml
+#      # group_vars/pg_single_2/pg_all.yaml
+#      # group_vars/pg_single_3/pg_all.yaml
+#      postgres_shared_preload_libraries: "pg_cron,pg_stat_statements,uuid-ossp,citus"
 #
-#   这会在所有节点安装 citus 包并执行 CREATE EXTENSION。
+#      pg_extensions:
+#        - "pg_cron"
+#        - "citus"
+#
+#      pg_extensions_on:
+#        - { db: 'dev', extension: 'citus' }
+#
+#   2. 在所有节点更新 Patroni 配置（自动重启 PostgreSQL）：
+#
+#      ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
+#        -e HOSTS=pg_single_1 -t patroni-config
+#      ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
+#        -e HOSTS=pg_single_2 -t patroni-config
+#      ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
+#        -e HOSTS=pg_single_3 -t patroni-config
+#
+#      # 或者一次性执行所有节点：
+#      for host in pg_single_1 pg_single_2 pg_single_3; do
+#        ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
+#          -e HOSTS=$host -t patroni-config
+#      done
+#
+#   3. 在所有节点安装扩展包并创建扩展：
+#
+#      for host in pg_single_1 pg_single_2 pg_single_3; do
+#        ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
+#          -e HOSTS=$host -t pg-extension
+#      done
 #
 # 使用本剧本配置集群：
 #   ansible-playbook -i hosts.ini playbooks/citus.yaml \
