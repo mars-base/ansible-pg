@@ -23,7 +23,7 @@
 - name: install pip3 packages on venv
   pip:
     name: "{{ item }}"
-    extra_args: "-i https://mirrors.aliyun.com/pypi/simple/"
+    extra_args: "-i {{ py3venv_pip_index_url }}"
     executable: "{{ py3venv_dir }}/bin/pip3"
   loop:
   - "{{ py3venv_pip_pkgs }}"

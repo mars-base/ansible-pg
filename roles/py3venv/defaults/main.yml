@@ -1,5 +1,6 @@
 ---
 py3venv_dir: /srv/py3venv
+py3venv_pip_index_url: "https://mirrors.aliyun.com/pypi/simple/"
 py3venv_pip_pkgs:
 - requests
 - web.py
