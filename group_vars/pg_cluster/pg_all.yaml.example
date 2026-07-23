@@ -2,6 +2,10 @@
 # 定义 patroni postgres 集群的所有节点的配置变量
 # NOTE: 本文件为示例，请将 CHANGEME 替换为实际密码后复制为 pg_all.yaml 使用
 
+# 配置postgresql数据库管理用户
+postgres_admin: postgres
+postgres_admin_password: CHANGEME
+
 # 节点角色定义
 pg_node_role:
   pg-patroni-01:
@@ -19,6 +23,7 @@ pg_node_role:
       - etcd
       - haproxy
       - pgbackrest
+      - cron
       - postgrest
 
 # haproxy 配置，作为 postgres 数据库集群的负载均衡器，连接到 pgbouncer 代理，读写分离模式
@@ -72,7 +77,7 @@ pgbouncer_databases:
 # pgbackrest 配置，作为 postgresql 数据库的备份恢复工具
 pgbackrest_user: postgres  # pgbackrest运行用户，保持和patroni里运行postgres用户一致,默认是postgres
 pgbackrest_backup_pgpass: "CHANGEME" # postgres管理员用户的密码，保持和patroni里postgres管理员用户密码一致
-pgbackrest_sockert_dir: "{{ pgbouncer_socket_dir }}" # pgbouncer代理socket目录
+pgbackrest_socket_dir: "{{ pgbouncer_socket_dir }}" # pgbouncer代理socket目录
 pgbackrest_pg_port: 5433  # pgbouncer代理端口，和pgbouncer监听端口一致
 pgbackrest_backup_dir: /srv/pgbackrest_ha
 pgbackrest_backup_log_dir: /var/log/pgbackrest_ha
@@ -110,7 +115,7 @@ pgbackrest_backup_config: |    # 备份服务器的pgbackrest配置
   pg1-host-user=postgres
   pg1-path=/srv/patroni/postgres/data
   pg1-port={{ pgbackrest_pg_port }}
-  pg1-socket-path={{ pgbackrest_sockert_dir }}
+  pg1-socket-path={{ pgbackrest_socket_dir }}
   pg1-database=postgres
 
   pg2-host={{ hostvars['pg-patroni-02']['ansible_host'] | default('192.168.1.12') }}
@@ -118,7 +123,7 @@ pgbackrest_backup_config: |    # 备份服务器的pgbackrest配置
   pg2-host-user=postgres
   pg2-path=/srv/patroni/postgres/data
   pg2-port={{ pgbackrest_pg_port }}
-  pg2-socket-path={{ pgbackrest_sockert_dir }}
+  pg2-socket-path={{ pgbackrest_socket_dir }}
   pg2-database=postgres
 
 pgbackrest_patroni_config: | # patroni postgres节点的pgbackrest配置
@@ -142,7 +147,7 @@ pgbackrest_patroni_config: | # patroni postgres节点的pgbackrest配置
   [{{ pgbackrest_stanza }}]
   pg1-path=/srv/patroni/postgres/data
   pg1-port={{ pgbackrest_pg_port }}
-  pg1-socket-path={{ pgbackrest_sockert_dir }}
+  pg1-socket-path={{ pgbackrest_socket_dir }}
   pg1-database=postgres
 
 # patroni 配置，作为 postgresql 数据库节点的高可用管理工具
