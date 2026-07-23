@@ -67,7 +67,7 @@
       when: "'pgbackrest' in pg_node_role[inventory_hostname]['roles']"
     - role: cron
       tags: cron
-      when: "'pgbackrest' in pg_node_role[inventory_hostname]['roles']"
+      when: "'cron' in pg_node_role[inventory_hostname]['roles']"
     - role: postgrest
       tags: postgrest
       when: "'postgrest' in pg_node_role[inventory_hostname]['roles'] or 'patroni' in pg_node_role[inventory_hostname]['roles']"

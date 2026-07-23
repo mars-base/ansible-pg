@@ -19,6 +19,15 @@
     delete: yes
   tags: [sync]
 
+- name: deploy backup script
+  template:
+    src: "pg-backup.sh.j2"
+    dest: "{{ cron_scripts_dir }}/pg-backup.sh"
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [sync]
+
 - name: generate secrets key
   shell: echo -n "{{ cron_secret_key }}" > {{ cron_secret_key_file }}
 

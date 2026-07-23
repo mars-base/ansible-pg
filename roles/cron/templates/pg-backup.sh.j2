@@ -11,13 +11,8 @@ mkdir -p $log_dir
 echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] The pg-backup.sh script is running on $(hostname)" | tee -a $log_file
 
 sudo -iu postgres \
-    pgbackrest --stanza=pg-single --log-level-console=info --type=full backup \
+    pgbackrest --stanza={{ pgbackrest_stanza }} --log-level-console=info --type=full backup \
     >> $log_file 2>&1
-echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Backup stanza pg-single is done" | tee -a $log_file
-
-sudo -iu postgres \
-    pgbackrest --stanza=ha --log-level-console=info --type=full backup \
-    >> $log_file 2>&1
-echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Backup stanza ha is done" | tee -a $log_file
+echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Backup stanza {{ pgbackrest_stanza }} is done" | tee -a $log_file
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Log file: $log_file" | tee -a $log_file
