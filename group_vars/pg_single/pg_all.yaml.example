@@ -19,6 +19,7 @@ pg_node_role:
       - patroni
       - pgbouncer
       - pgbackrest
+      - cron
       - postgrest
   pg-backup:
     roles:
@@ -96,52 +97,25 @@ pgbouncer_databases:
 # pgbackrest 配置，作为 postgresql 数据库的备份恢复工具
 pgbackrest_user: "{{ postgres_admin }}"  # pgbackrest运行用户，保持和patroni里运行postgres用户一致,默认是postgres
 pgbackrest_backup_pgpass: "{{ postgres_admin_password }}" # postgres管理员用户的密码，保持和patroni里postgres管理员用户密码一致
-pgbackrest_sockert_dir: "{{ pgbouncer_socket_dir }}" # pgbouncer代理socket目录
+pgbackrest_socket_dir: "{{ pgbouncer_socket_dir }}" # pgbouncer代理socket目录
 pgbackrest_pg_port: 5433  # pgbouncer代理端口，和pgbouncer监听端口一致
 pgbackrest_backup_dir: /srv/pgbackrest_single
-pgbackrest_backup_log_dir: /var/log/pgbackrest_single
-# pgbackrest_backup_server: pg-single # 指定备份服务器
-pgbackrest_backup_server: pg-backup # 指定备份服务器
+pgbackrest_backup_log_dir: /srv/pgbackrest_single/logs
+pgbackrest_backup_server: pg-single # 指定备份服务器（单机模式下 PG 和备份在同一台机器）
 pgbackrest_stanza: pg-single  # 设置pg集群的备份仓库名称
 
 # pgbackrest ssh 密钥对（备份服务器与 patroni 节点之间通过 ssh 通信）
 # 生成方式：ssh-keygen -t rsa -b 4096 -f id_rsa_pgbackrest -N '' -C 'pgbackrest'
 pgbackrest_ssh_private_key: |
   -----BEGIN OPENSSH PRIVATE KEY-----
-  YOUR_PRIVATE_KEY_CONTENT_LINE_1
-  YOUR_PRIVATE_KEY_CONTENT_LINE_2
-  ...
-  YOUR_PRIVATE_KEY_CONTENT_LINE_N
+  YOUR_PRIVATE_KEY_CONTENT_HERE
   -----END OPENSSH PRIVATE KEY-----
 pgbackrest_ssh_public_key: "YOUR_PUBLIC_KEY_CONTENT_HERE"
 
-
-# NOTE:
-# 如果pgbackrest服务器和patroni postgres节点在同一台主机上，不需要配置ssh连接参数
-# 备份服务器和patroni postgres节点的配置保持相同内容
-# pgbackrest_backup_config: |    # 备份服务器的pgbackrest配置
-#   [global]
-#   repo1-path={{ pgbackrest_backup_dir }}
-#   repo1-retention-full=7
-#   repo1-retention-full-type=time
-
-#   process-max=2
-#   archive-check=y
-#   start-fast=y
-
-#   log-level-console=info
-#   log-path={{ pgbackrest_backup_log_dir }}
-#   log-level-file=debug
-
-#   [{{ pgbackrest_stanza }}]
-#   pg1-path=/srv/patroni/postgres/data
-#   pg1-port={{ pgbackrest_pg_port }}
-#   pg1-socket-path={{ pgbackrest_sockert_dir }}
-#   pg1-database=postgres
-
-pgbackrest_backup_config: |    # 备份服务器的pgbackrest配置
+# pgbackrest 单机模式配置（PG 和备份在同一台机器，无需 SSH）
+pgbackrest_backup_config: |
   [global]
-  repo1-path=/srv/pgbackrest_single
+  repo1-path={{ pgbackrest_backup_dir }}
   repo1-retention-full=7
   repo1-retention-full-type=time
 
@@ -150,64 +124,38 @@ pgbackrest_backup_config: |    # 备份服务器的pgbackrest配置
   start-fast=y
 
   log-level-console=info
-  log-path=/var/log/pgbackrest_single
+  log-path={{ pgbackrest_backup_log_dir }}
   log-level-file=debug
 
   [pg-single]
-  pg1-host={{ hostvars['pg-single']['ansible_host'] | default('192.168.1.10') }}
-  pg1-host-port=32200
-  pg1-host-user=postgres
   pg1-path=/srv/patroni/postgres/data
   pg1-port={{ pgbackrest_pg_port }}
-  pg1-socket-path={{ pgbackrest_sockert_dir }}
+  pg1-socket-path={{ pgbackrest_socket_dir }}
   pg1-database=postgres
 
-# NOTE:
-# 如果pgbackrest服务器和patroni postgres节点不在同一台主机上，需要配置ssh连接参数
-# repo1-host和repo1-host-port、repo1-host-user
-# pgbackrest_patroni_config: | # patroni postgres节点的pgbackrest配置
-#   [global]
-#   repo1-path={{ pgbackrest_backup_dir }}
-#   repo1-retention-full=7
-#   repo1-retention-full-type=time
-
-#   process-max=2
-#   archive-check=y
-#   start-fast=y
-
-#   log-level-console=info
-#   log-path={{ pgbackrest_backup_log_dir }}
-#   log-level-file=debug
-
-#   [{{ pgbackrest_stanza }}]
-#   pg1-path=/srv/patroni/postgres/data
-#   pg1-port={{ pgbackrest_pg_port }}
-#   pg1-socket-path={{ pgbackrest_sockert_dir }}
-#   pg1-database=postgres
-
-pgbackrest_patroni_config: | # patroni postgres节点的pgbackrest配置
+pgbackrest_patroni_config: |
   [global]
-  repo1-path=/srv/pgbackrest_single
+  repo1-path={{ pgbackrest_backup_dir }}
   repo1-retention-full=7
   repo1-retention-full-type=time
-
-  repo1-host={{ hostvars['pg-backup']['ansible_host'] | default('192.168.1.13') }}
-  repo1-host-port=32200
-  repo1-host-user=postgres
 
   process-max=2
   archive-check=y
   start-fast=y
 
   log-level-console=info
-  log-path=/var/log/pgbackrest_single
+  log-path={{ pgbackrest_backup_log_dir }}
   log-level-file=debug
 
   [{{ pgbackrest_stanza }}]
   pg1-path=/srv/patroni/postgres/data
   pg1-port={{ pgbackrest_pg_port }}
-  pg1-socket-path={{ pgbackrest_sockert_dir }}
+  pg1-socket-path={{ pgbackrest_socket_dir }}
   pg1-database=postgres
+
+# postgrest JWT secret（至少 32 字符）
+postgrest_password: "{{ postgres_dba_password }}"
+postgrest_jwt_secret: "CHANGEME_CHANGEME_CHANGEME_CHANGEME"
 
 # patroni 配置，作为 postgresql 数据库节点的高可用管理工具
 patroni_etcd_address: "{{ ansible_default_ipv4.address }}:12379"
