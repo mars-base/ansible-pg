@@ -2,6 +2,51 @@
 
 使用 Ansible 部署 PostgreSQL（基于 Patroni 的高可用集群）。
 
+## 高可用架构
+
+```
+                          ┌─────────────────────────────────────┐
+                          │           HAProxy (备份服务器)        │
+                          │  :5000 primary    :5001 replica     │
+                          │  :8090 stats      :8008 health-check│
+                          └──────┬─────────────────┬────────────┘
+                                 │                 │
+                    ┌────────────┴───┐        ┌────┴────────────┐
+                    │   pg-patroni-01│        │   pg-patroni-02 │
+                    │  (replica)     │        │   (primary)     │
+                    │  PostgreSQL 17 │        │  PostgreSQL 17  │
+                    │  pgbouncer:5433│        │  pgbouncer:5433 │
+                    └───────┬────────┘        └────────┬────────┘
+                            │    Streaming Replication │
+                            │◄─────────────────────────┘
+                            │
+                    ┌───────┴─────────────────────────────────┐
+                    │              etcd (备份服务器)            │
+                    │  存储集群状态、leader 选举、故障切换       │
+                    └─────────────────────────────────────────┘
+                            │
+                    ┌───────┴─────────────────────────────────┐
+                    │          pgbackrest (备份服务器)          │
+                    │  SSH 连接各 patroni 节点，WAL 归档 + 备份 │
+                    │  :5433 pgbouncer  :32200 SSH             │
+                    └─────────────────────────────────────────┘
+```
+
+**核心组件**
+
+| 组件 | 角色 |
+|------|------|
+| **Patroni** | 集群管理、leader 选举、自动故障切换 |
+| **PostgreSQL** | 1 个 primary（读写）+ N 个 replica（只读，流复制） |
+
+**故障切换**：primary 宕机后，Patroni 通过 etcd 感知状态变化，自动从存活的 replica 中选举新的 primary，HAProxy 健康检查随之将流量路由到新主节点，整个过程无需人工干预。
+| **pgbouncer** | 各节点 sidecar 连接池，代理端口 5433 |
+| **HAProxy** | 读写分离入口，L7 健康检查路由到对应角色节点 |
+| **etcd** | DCS（分布式配置存储），保存集群元数据 |
+| **pgbackrest** | 备份服务器，WAL 归档 + 定时全量备份 |
+| **PostgREST** | RESTful API 代理（可选） |
+| **pgdog** | 分片代理（可选，支持多实例） |
+
 ## 环境准备
 
 > **推荐系统**：Debian / Ubuntu。本项目基于 APT 包管理、systemd 服务管理开发测试，其他操作系统未经验证，可能存在兼容性问题。
@@ -130,9 +175,25 @@ sudo -iu postgres pgbackrest --stanza=pg-single info
 # pgdog 多实例
 sudo supervisorctl status pgdog-production pgdog-dev
 
+# HAProxy 读写分离
+systemctl status haproxy --no-pager
+curl -s http://<haproxy_ip>:5000/primary   # 写入端口（连接到 primary）
+curl -s http://<haproxy_ip>:5001/replica   # 只读端口（连接到 replica）
+# 健康检查统计页面
+curl -s http://<haproxy_ip>:8090/haproxy/stats
+
 # cron 定时备份
 sudo crontab -l -u root | grep backup
 ```
+
+### HAProxy 端口说明
+
+| 端口 | 用途 | 连接方式 |
+|------|------|---------|
+| `5000` | primary（读写） | TCP，通过 L7 健康检查 `/primary` 路由到主节点 |
+| `5001` | replica（只读） | TCP，通过 L7 健康检查 `/replica` 路由到从节点，roundrobin 负载均衡 |
+| `8008` | 健康检查端口 | Patroni REST API，HAProxy 通过此端口判断节点角色 |
+| `8090` | stats 统计页面 | HTTP，访问 `/haproxy/stats` 查看代理状态 |
 
 ### 测试 pgbouncer 连接
 
