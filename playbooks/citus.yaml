@@ -7,12 +7,13 @@
 # _coordinator_hostname: 协调器主机名
 # _citus_to_db: citus 扩展安装到的数据库名 仅在这个数据库里使用citus分布式
 # _pg_user: pg 的管理员账号 如admin
+# _pg_password: pg 管理员账号密码
 # _worker_hostname: 工作节点主机名
 # _postgres_port: postgresql 端口
 
 # 配置所有节点dns
 # 依次更新_worker_hostname
-# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _worker_hostname=dev2 -t dns -e "_citus_all_nodes=['dev1','dev2','dev3','dev4']"
+# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin -e _worker_hostname=dev2 -t dns -e "_citus_all_nodes=['dev1','dev2','dev3','dev4']"
 
 # 水平扩容节点
 # 修改hba 增加新节点的访问权限 修改变量postgres_citus_nodes 增加新节点ip/32
@@ -36,9 +37,9 @@
 
 
 # --- 创建Citus微服务 多租户 适用于对schema进行分布式的场景 schema对应租户名一致
-# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _worker_hostname=dev2 -t tenant -e _citus_tenant_name=myfarm1 -e _citus_tenant_password=myfarm1
-# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _worker_hostname=dev2 -t tenant -e _citus_tenant_name=myfarm2 -e _citus_tenant_password=myfarm2
-# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _worker_hostname=dev2 -t tenant -e _citus_tenant_name=myfarm3 -e _citus_tenant_password=myfarm3
+# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin -e _worker_hostname=dev2 -t tenant -e _citus_tenant_name=myfarm1 -e _citus_tenant_password=myfarm1
+# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin -e _worker_hostname=dev2 -t tenant -e _citus_tenant_name=myfarm2 -e _citus_tenant_password=myfarm2
+# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin -e _worker_hostname=dev2 -t tenant -e _citus_tenant_name=myfarm3 -e _citus_tenant_password=myfarm3
 
 # Example
 
@@ -47,21 +48,21 @@
 # dev2 is worker node
 
 # auto register coordinator node and add worker node to build citus cluster
-# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _worker_hostname=dev2
+# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin -e _worker_hostname=dev2
 
 # verify citus extension is ready
-# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _worker_hostname=dev2 -t verify
+# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin -e _worker_hostname=dev2 -t verify
 
 - name: Deploy citus on postgresql cluster
-  # connect to localhost
   hosts: localhost
-  gather_facts: no
+  gather_facts: yes
   become: no
   vars:
     _citus_all_nodes: []
     _coordinator_hostname: ""
     _citus_to_db: ""
     _pg_user: ""
+    _pg_password: ""
     _worker_hostname: ""
     _postgres_port: 5432
     _citus_tenant_name: ""
@@ -70,25 +71,28 @@
     - name: Check params
       assert:
         that:
-          - _citus_all_nodes is defined
-          - _coordinator_hostname is defined and _coordinator_hostname!= ""
-          - _citus_to_db is defined and _citus_to_db!= ""
-          - _pg_user is defined and _pg_user!= ""
-          - _worker_hostname is defined and _worker_hostname!= ""
-          - _postgres_port is defined and _postgres_port!= ""
+          - _citus_all_nodes | length > 0
+          - _coordinator_hostname is defined and _coordinator_hostname != ""
+          - _citus_to_db is defined and _citus_to_db != ""
+          - _pg_user is defined and _pg_user != ""
+          - _pg_password is defined and _pg_password != ""
+          - _worker_hostname is defined and _worker_hostname != ""
+          - _postgres_port is defined and _postgres_port != ""
           - _citus_tenant_name is defined
           - _citus_tenant_password is defined
 
     - name: Install citus extension on coordinator
       shell: |
-        psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} -c "CREATE EXTENSION IF NOT EXISTS citus;"
+        PGPASSWORD='{{ _pg_password }}' psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
+        -c "CREATE EXTENSION IF NOT EXISTS citus;"
       args:
         executable: /bin/bash
       delegate_to: "{{ _coordinator_hostname }}"
 
     - name: Install citus extension on worker
       shell: |
-        psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} -c "CREATE EXTENSION IF NOT EXISTS citus;"
+        PGPASSWORD='{{ _pg_password }}' psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
+        -c "CREATE EXTENSION IF NOT EXISTS citus;"
       args:
         executable: /bin/bash
       delegate_to: "{{ _worker_hostname }}"
@@ -100,118 +104,142 @@
       debug:
         msg: "worker node ip address: {{ hostvars[_worker_hostname].ansible_host }}"
 
-    - name: Add worker node ip to coordinator dns record /etc/hosts file
-      lineinfile:
-        path: /etc/hosts
-        line: "{{ hostvars[_worker_hostname].ansible_host }} {{ _worker_hostname }}"
-        create: yes
+    - name: Configure DNS for citus nodes
       become: true
       become_user: root
       become_method: sudo
-      delegate_to: "{{ _coordinator_hostname }}"
+      block:
+        - name: Add worker node ip to coordinator dns record /etc/hosts file
+          lineinfile:
+            path: /etc/hosts
+            line: "{{ hostvars[_worker_hostname].ansible_host }} {{ _worker_hostname }}"
+            create: yes
+          delegate_to: "{{ _coordinator_hostname }}"
 
-    - name: Add coordinator node ip to worker dns record /etc/hosts file
-      lineinfile:
-        path: /etc/hosts
-        line: "{{ hostvars[_coordinator_hostname].ansible_host }} {{ _coordinator_hostname }}"
-        create: yes
-      become: true
-      become_user: root
-      become_method: sudo
-      delegate_to: "{{ _worker_hostname }}"
+        - name: Add coordinator node ip to worker dns record /etc/hosts file
+          lineinfile:
+            path: /etc/hosts
+            line: "{{ hostvars[_coordinator_hostname].ansible_host }} {{ _coordinator_hostname }}"
+            create: yes
+          delegate_to: "{{ _worker_hostname }}"
 
-    - name: Add citus all worker nodes to each worker /etc/hosts file
-      lineinfile:
-        path: /etc/hosts
-        line: "{{ hostvars[item].ansible_host }} {{ item }}"
-        create: yes
-      loop: "{{ _citus_all_nodes }}"
-      become: true
-      become_user: root
-      become_method: sudo
-      delegate_to: "{{ _worker_hostname }}"
-      tags: [dns]
+        - name: Add citus all worker nodes to each worker /etc/hosts file
+          lineinfile:
+            path: /etc/hosts
+            line: "{{ hostvars[item].ansible_host }} {{ item }}"
+            create: yes
+          loop: "{{ _citus_all_nodes }}"
+          delegate_to: "{{ _worker_hostname }}"
+          tags: [dns]
 
     - block:
-        # 第一个任务：创建租户用户
+        # 第一个任务：创建租户用户（如果不存在）
+        - name: Check if tenant user exists
+          shell: |
+            PGPASSWORD='{{ _pg_password }}' psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} -tAc \
+            "SELECT 1 FROM pg_roles WHERE rolname='{{ _citus_tenant_name }}';"
+          args:
+            executable: /bin/bash
+          delegate_to: "{{ _coordinator_hostname }}"
+          register: _user_exists
+          changed_when: false
+
         - name: Create tenant user on citus
           shell: |
-            psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
+            PGPASSWORD='{{ _pg_password }}' psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
             -c "CREATE USER {{ _citus_tenant_name }} WITH PASSWORD '{{ _citus_tenant_password }}';"
           args:
             executable: /bin/bash
-          ignore_errors: true
           delegate_to: "{{ _coordinator_hostname }}"
+          when: _user_exists.stdout | trim == ""
           register: _citus_create_user
+
         - name: Check citus create user result
           debug:
-            msg: |
-              Create tenant user on citus stdout:
-              {{ _citus_create_user.stdout }}
-              Create tenant user on citus stderr:
-              {{ _citus_create_user.stderr }}
+            msg: "Tenant user '{{ _citus_tenant_name }}' already exists, skipped creation."
+          when: _user_exists.stdout | trim != ""
 
         # 第二个任务：创建模式
+        - name: Check if schema exists
+          shell: |
+            PGPASSWORD='{{ _pg_password }}' psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} -tAc \
+            "SELECT 1 FROM information_schema.schemata WHERE schema_name='{{ _citus_tenant_name }}';"
+          args:
+            executable: /bin/bash
+          delegate_to: "{{ _coordinator_hostname }}"
+          register: _schema_exists
+          changed_when: false
+
         - name: Create schema on citus
           shell: |
-            psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
+            PGPASSWORD='{{ _pg_password }}' psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
             -c "CREATE SCHEMA AUTHORIZATION {{ _citus_tenant_name }};"
           args:
             executable: /bin/bash
-          ignore_errors: true
           delegate_to: "{{ _coordinator_hostname }}"
+          when: _schema_exists.stdout | trim == ""
           register: _citus_create_schema
+
         - name: Check citus create schema result
           debug:
-            msg: |
-              Create schema on citus stdout:
-              {{ _citus_create_schema.stdout }}
-              Create schema on citus stderr:
-              {{ _citus_create_schema.stderr }}
+            msg: "Schema '{{ _citus_tenant_name }}' already exists, skipped creation."
+          when: _schema_exists.stdout | trim != ""
 
         # 第三个任务：分布式处理模式
         - name: Distribute schema on citus
           shell: |
-            psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
+            PGPASSWORD='{{ _pg_password }}' psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
             -c "SELECT citus_schema_distribute('{{ _citus_tenant_name }}');"
           args:
             executable: /bin/bash
-          ignore_errors: true
           delegate_to: "{{ _coordinator_hostname }}"
           register: _citus_distribute_schema
-        - name: Check citus distribute schema result
-          debug:
-            msg: |
-              Distribute schema on citus stdout:
-              {{ _citus_distribute_schema.stdout }}
-              Distribute schema on citus stderr:
-              {{ _citus_distribute_schema.stderr }}
       when: _citus_tenant_name is defined and _citus_tenant_password is defined and _citus_tenant_name != "" and _citus_tenant_password != ""
       tags: [tenant]
 
     - name: Register the coordinator node to postgresql cluster
       shell: |
-        psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
-        -c "SELECT citus_set_coordinator_host('{{ _coordinator_hostname }}', {{ _postgres_port }});"
-      register: _citus_set_coordinator_host
-      ignore_errors: true
+        PGPASSWORD='{{ _pg_password }}' psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} -tAc \
+        "SELECT count(*) FROM pg_dist_node WHERE nodename='{{ _coordinator_hostname }}' AND nodeport={{ _postgres_port }} AND groupid=0;"
+      register: _coordinator_registered
+      changed_when: false
       delegate_to: "{{ _coordinator_hostname }}"
+
+    - name: Register coordinator node
+      shell: |
+        PGPASSWORD='{{ _pg_password }}' psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
+        -c "SELECT citus_set_coordinator_host('{{ _coordinator_hostname }}', {{ _postgres_port }});"
+      delegate_to: "{{ _coordinator_hostname }}"
+      when: _coordinator_registered.stdout | trim == "0"
+      register: _citus_set_coordinator_host
+
     - debug:
-        msg: "Register the coordinator node to postgresql cluster result:\n{{ _citus_set_coordinator_host.stdout }}"
+        msg: "Coordinator node already registered."
+      when: _coordinator_registered.stdout | trim != "0"
+
+    - name: Check if worker node is already registered
+      shell: |
+        PGPASSWORD='{{ _pg_password }}' psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} -tAc \
+        "SELECT count(*) FROM pg_dist_node WHERE nodename='{{ _worker_hostname }}' AND nodeport={{ _postgres_port }};"
+      register: _worker_registered
+      changed_when: false
+      delegate_to: "{{ _coordinator_hostname }}"
 
     - name: Register the worker node to postgresql cluster
       shell: |
-        psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
+        PGPASSWORD='{{ _pg_password }}' psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
         -c "SELECT * from citus_add_node('{{ _worker_hostname }}', {{ _postgres_port }});"
-      register: _citus_add_node
-      ignore_errors: true
       delegate_to: "{{ _coordinator_hostname }}"
+      when: _worker_registered.stdout | trim == "0"
+      register: _citus_add_node
+
     - debug:
-        msg: "Register the worker node to postgresql cluster result:\n{{ _citus_add_node.stdout }}"
+        msg: "Worker node already registered."
+      when: _worker_registered.stdout | trim != "0"
 
     - name: Verify that citus coordinator and worker node is ready
       shell: |
-        psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
+        PGPASSWORD='{{ _pg_password }}' psql -h localhost -p {{ _postgres_port }} -U {{ _pg_user }} -d {{ _citus_to_db }} \
         -c "SELECT * FROM citus_get_active_worker_nodes();"
       register: _citus_get_active_worker_nodes
       delegate_to: "{{ _coordinator_hostname }}"
