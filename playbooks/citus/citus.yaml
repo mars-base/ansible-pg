@@ -36,6 +36,7 @@
 #       -t tenant \
 #       -e _citus_tenant_name=myfarm1 \
 #       -e _citus_tenant_password=myfarm1
+#
 
 - name: Deploy citus on postgresql cluster
   hosts: localhost
@@ -188,6 +189,7 @@
           register: _citus_distribute_schema
       when: _citus_tenant_name is defined and _citus_tenant_password is defined and _citus_tenant_name != "" and _citus_tenant_password != ""
       tags: [tenant]
+
 
     - name: Register the coordinator node to postgresql cluster
       shell: |
