@@ -7,33 +7,45 @@
 # 2. 使用微服务账号 在指定的schema上 创建微服务需要的普通表
 # 3. 验证 微服务账号 在指定的schema上 创建的普通表 是否已经是分布式表
 
+# 示例：
+# py scripts/citus-schema-test.py --host 10.241.21.97 --port 5433 --dbname dev --user admin --password xxx --tenant-password yyy
+
+import argparse
 import psycopg
 from faker import Faker
 
 fake = Faker()
 
-# 管理员账号连接字符串
-admin_connect = "dbname=dev host='192.168.1.11' user=admin password=admin"
-# 微服务账号连接字符串
-ms1_connect = "dbname=dev host='192.168.1.11' user=myfarm1 password=myfarm1"
-ms2_connect = "dbname=dev host='192.168.1.11' user=myfarm2 password=myfarm2"
-ms3_connect = "dbname=dev host='192.168.1.11' user=myfarm3 password=myfarm3"
+# 解析命令行参数
+parser = argparse.ArgumentParser(description='测试 Citus 微服务 schema 模式的分布式')
+parser.add_argument('--host', default='192.168.1.11', help='PostgreSQL 主机地址 (默认: 192.168.1.11)')
+parser.add_argument('--port', type=int, default=5432, help='PostgreSQL 端口 (默认: 5432)')
+parser.add_argument('--dbname', default='dev', help='数据库名 (默认: dev)')
+parser.add_argument('--user', default='admin', help='管理员用户名 (默认: admin)')
+parser.add_argument('--password', default='admin', help='管理员密码 (默认: admin)')
+parser.add_argument('--tenant-password', default='myfarm1', help='租户密码 (默认: myfarm1)')
+parser.add_argument('--tenants', nargs='+', default=['myfarm1', 'myfarm2', 'myfarm3'], help='租户列表 (默认: myfarm1 myfarm2 myfarm3)')
+args = parser.parse_args()
+
+# 构建连接字符串
+base = f"dbname={args.dbname} host='{args.host}' port={args.port}"
+admin_connect = f"{base} user={args.user} password={args.password}"
+tenant_connects = {t: f"{base} user={t} password={args.tenant_password}" for t in args.tenants}
 
 print("connecting to pg with admin ...")
 conn_admin = psycopg.connect(admin_connect)
-print("connecting to pg with myfarm1 user...")
-conn_ms1 = psycopg.connect(ms1_connect)
-print("connecting to pg with myfarm2 user...")
-conn_ms2 = psycopg.connect(ms2_connect)
-print("connecting to pg with myfarm3 user...")
-conn_ms3 = psycopg.connect(ms3_connect)
 
-# create schema names myfarm1, myfarm2, myfarm3, and open schema distribution
-schema_names = ['myfarm1', 'myfarm2', 'myfarm3']
-for schema_name in schema_names:
+# 连接所有租户
+tenant_conns = {}
+for tenant in args.tenants:
+    print(f"connecting to pg with {tenant} user...")
+    tenant_conns[tenant] = psycopg.connect(tenant_connects[tenant])
+
+# create schema and enable distribution
+for schema_name in args.tenants:
+    conn_t = tenant_conns[schema_name]
     with conn_admin.cursor() as cur:
         print(f"create schema {schema_name}...")
-        # 检查schema是否存在
         cur.execute("SELECT 1 FROM pg_namespace WHERE nspname = %s", (schema_name,))
         if not cur.fetchone():
             cur.execute(f"CREATE SCHEMA AUTHORIZATION {schema_name}")
@@ -42,11 +54,9 @@ for schema_name in schema_names:
         else:
             print(f"Schema {schema_name} already exists.")
 
-        # 检查schema是否已经是分布式schema
         print(f"check schema {schema_name} is distributed...")
         cur.execute("SELECT 1 FROM citus_schemas WHERE schema_name = %s::regnamespace", (schema_name,))
         if not cur.fetchone():
-            # 开启schema分布
             print(f"distribute schema {schema_name}...")
             cur.execute(f"SELECT citus_schema_distribute('{schema_name}');")
             conn_admin.commit()
@@ -54,26 +64,16 @@ for schema_name in schema_names:
         else:
             print(f"Schema {schema_name} is already distributed.")
 
-
-
-# 定义连接和 schema 名称的映射
-schema_conn_mapping = {
-    'myfarm1': conn_ms1,
-    'myfarm2': conn_ms2,
-    'myfarm3': conn_ms3
-}
-
-for schema_name, conn in schema_conn_mapping.items():
-    print(f"connecting to pg with {schema_name} user...")
+# 在每个租户 schema 下创建表并插入数据
+for schema_name, conn in tenant_conns.items():
+    print(f"creating tables in schema {schema_name}...")
     with conn.cursor() as cur:
-        print(f"create tables in schema {schema_name}...")
         tables = [
             ("users", "id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL"),
             ("query_details", "id SERIAL PRIMARY KEY, ip_address INET NOT NULL, query_time TIMESTAMP NOT NULL"),
             ("ping_results", "id SERIAL PRIMARY KEY, host VARCHAR(255) NOT NULL, result TEXT NOT NULL")
         ]
         for table_name, table_def in tables:
-            # 检查表是否存在
             cur.execute("SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s", (schema_name, table_name))
             if not cur.fetchone():
                 cur.execute(f"CREATE TABLE {schema_name}.{table_name} ({table_def})")
@@ -82,34 +82,22 @@ for schema_name, conn in schema_conn_mapping.items():
             else:
                 print(f"Table {table_name} in {schema_name} already exists.")
 
-    # insert 100 fake item to table users in schema myfarmX, using faker module
     with conn.cursor() as cur:
-        print(f"insert 100 fake item to table users in schema {schema_name}...")
+        print(f"insert 100 fake items to {schema_name}.users...")
         for _ in range(100):
-            name = fake.name()
-            email = fake.email()
-            cur.execute(f"INSERT INTO {schema_name}.users (name, email) VALUES (%s, %s)", (name, email))
+            cur.execute(f"INSERT INTO {schema_name}.users (name, email) VALUES (%s, %s)", (fake.name(), fake.email()))
         conn.commit()
 
-    # insert 2 fake item to table query_details in schema myfarmX, using faker module
-    with conn.cursor() as cur:
-        print(f"insert 2 fake item to table query_details in schema {schema_name}...")
+        print(f"insert 2 fake items to {schema_name}.query_details...")
         for _ in range(2):
-            ip_address = fake.ipv4()
-            query_time = fake.date_time_this_decade()
-            cur.execute(f"INSERT INTO {schema_name}.query_details (ip_address, query_time) VALUES (%s, %s)", (ip_address, query_time))
+            cur.execute(f"INSERT INTO {schema_name}.query_details (ip_address, query_time) VALUES (%s, %s)", (fake.ipv4(), fake.date_time_this_decade()))
         conn.commit()
 
-    # insert 2 fake item to table ping_results in schema myfarmX, using faker module
-    with conn.cursor() as cur:
-        print(f"insert 2 fake item to table ping_results in schema {schema_name}...")
+        print(f"insert 2 fake items to {schema_name}.ping_results...")
         for _ in range(2):
-            host = fake.domain_name()
-            result = fake.text()
-            cur.execute(f"INSERT INTO {schema_name}.ping_results (host, result) VALUES (%s, %s)", (host, result))
+            cur.execute(f"INSERT INTO {schema_name}.ping_results (host, result) VALUES (%s, %s)", (fake.domain_name(), fake.text()))
         conn.commit()
 
-    # close connection
     print(f"close connection with {schema_name} user.")
     conn.close()
 

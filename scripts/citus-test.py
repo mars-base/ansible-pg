@@ -9,12 +9,26 @@
 # 4. 查询数据分布
 # 5. 查询分片位置，验证数据分布
 
+# 示例：
+# py scripts/citus-test.py --host 10.241.21.97 --port 5433 --dbname dev --user dba --password xxx
+
+import argparse
 import psycopg
 from faker import Faker
 
 fake = Faker()
 
-dba_conn = "dbname=dev user=dba host='192.168.1.11' password=dba"
+# 解析命令行参数
+parser = argparse.ArgumentParser(description='测试 Citus 普通分布式表')
+parser.add_argument('--host', default='192.168.1.11', help='PostgreSQL 主机地址 (默认: 192.168.1.11)')
+parser.add_argument('--port', type=int, default=5432, help='PostgreSQL 端口 (默认: 5432)')
+parser.add_argument('--dbname', default='dev', help='数据库名 (默认: dev)')
+parser.add_argument('--user', default='dba', help='用户名 (默认: dba)')
+parser.add_argument('--password', default='dba', help='密码 (默认: dba)')
+args = parser.parse_args()
+
+# 构建连接字符串
+dba_conn = f"dbname={args.dbname} user={args.user} host='{args.host}' port={args.port} password={args.password}"
 
 print("connecting to pg...")
 conn = psycopg.connect(dba_conn)
