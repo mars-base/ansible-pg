@@ -45,7 +45,7 @@
           - _pg_dump_dir is defined
           - _mode is defined
           - _mode in ["sql", "dump"]
-          - _port in range(1,  65535)
+          - _port | int > 0 and _port | int < 65536
           - _host is string
           - _db is string
           - _user is string
