@@ -1,159 +1,60 @@
 ---
-# ============================================================================
 # Citus 分布式 PostgreSQL 数据库部署剧本
-# ============================================================================
-#
-# ⚠️ 重要：架构要求
-#
-#   Citus 必须配合多个 Patroni 单节点使用，不能使用 Patroni HA 自动故障切换！
-#
-#   原因：Patroni 自动 failover 后，Citus 元数据（pg_dist_node）不会自动更新，
-#   导致 coordinator 找不到 worker、worker 找不到 coordinator，整个分布式集群不可用。
-#
-#   正确架构：
-#     dev1 (Patroni 单节点) ←→ coordinator + worker
-#     dev2 (Patroni 单节点) ←→ worker
-#     dev3 (Patroni 单节点) ←→ worker
-#
-#   错误架构：
-#     Patroni HA 集群（1 primary + N replica）× Citus ❌
-#
-# ============================================================================
-#
-# 作用：
-#   1. 在 coordinator 和 worker 节点上安装 citus 扩展
-#   2. 配置节点间 DNS 解析
-#   3. 注册 coordinator 和 worker 节点到 citus 集群
-#   4. 创建多租户 schema（可选）
-#
-# 前置条件 - 安装 citus 扩展（多个 Patroni 单节点）：
-#
-#   Citus 需要在所有节点上安装扩展，假设有 3 个单节点分组：
-#   - pg_single_1 (coordinator)
-#   - pg_single_2 (worker)
-#   - pg_single_3 (worker)
-#
-#   1. 在每个节点的 group_vars 中添加 citus 配置：
-#
-#      # group_vars/pg_single_1/pg_all.yaml
-#      # group_vars/pg_single_2/pg_all.yaml
-#      # group_vars/pg_single_3/pg_all.yaml
-#      postgres_shared_preload_libraries: "pg_cron,pg_stat_statements,uuid-ossp,citus"
-#
-#      pg_extensions:
-#        - "pg_cron"
-#        - "citus"
-#
-#      pg_extensions_on:
-#        - { db: 'dev', extension: 'citus' }
-#
-#   2. 在所有节点更新 Patroni 配置并重启 PostgreSQL：
-#
-#      # 更新配置（生成 pg.yaml）
-#      for host in pg_single_1 pg_single_2 pg_single_3; do
-#        ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
-#          -e HOSTS=$host -t patroni-config
-#      done
-#
-#      # 重启所有节点的 PostgreSQL（使 shared_preload_libraries 生效）
-#      for host in pg_single_1 pg_single_2 pg_single_3; do
-#        ansible -i hosts.ini $host -b -m shell \
-#          -a "supervisorctl restart patroni"
-#      done
-#
-#   3. 在所有节点安装扩展包并创建扩展：
-#
-#      for host in pg_single_1 pg_single_2 pg_single_3; do
-#        ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
-#          -e HOSTS=$host -t pg-extension
-#      done
-#
-# 使用本剧本配置集群：
-#   ansible-playbook -i hosts.ini playbooks/citus.yaml \
-#     -e _coordinator_hostname=dev1 \
-#     -e _worker_hostname=dev2 \
-#     -e _citus_to_db=dev \
-#     -e _pg_user=admin \
-#     -e _pg_password=admin
-#
-# 验证集群状态：
-#   ansible-playbook -i hosts.ini playbooks/citus.yaml \
-#     -e _coordinator_hostname=dev1 -e _worker_hostname=dev2 \
-#     -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin \
-#     -t verify
-#
-# ============================================================================
+# 详细说明见 playbooks/citus/README.md
 
-# 参数说明
-# HOSTS: 主机列表
-# _coordinator_hostname: 协调器主机名
-# _citus_to_db: citus 扩展安装到的数据库名 仅在这个数据库里使用citus分布式
-# _pg_user: pg 的管理员账号 如admin
-# _pg_password: pg 管理员账号密码
-# _worker_hostname: 工作节点主机名
-# _postgres_port: postgresql 端口
-
-# 配置所有节点dns
-# 依次更新_worker_hostname
-# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin -e _worker_hostname=dev2 -t dns -e "_citus_all_nodes=['dev1','dev2','dev3','dev4']"
-
-# 水平扩容节点
-# 修改hba 增加新节点的访问权限 修改变量postgres_citus_nodes 增加新节点ip/32
-# 重载hba配置到所有集群节点
-# -e HOSTS=dev playbooks/postgresql.yaml -t hba
-# 需要把所有的节点主机名对应ip信息 配置到各个worker节点 参考上面的配置dns
-# 添加一个新的worker节点，在协调节点（coordinator）执行重新分片以分担数据负载
-# SELECT rebalance_table_shards();
-# 这会 迁移部分数据分片 到新 worker 节点，是一个可能影响性能的操作，应在低峰期进行。
-
-# 删除节点
-# 查询shardid分片数据
-# SELECT * FROM pg_dist_shard_placement where nodename='dev2' and nodeport=5432;
-# 如果返回 非空结果，说明它还持有数据，不能直接删除
-# 迁出某 worker 上的所有分片
-# 根据上面的 pg_dist_shard_placement 查询结果逐个移动
-# -- SELECT master_move_shard_placement(102018, 'dev2', 5432, 'dev3', 5432);
-# 当该节点上 不再持有任何分片 后，可以安全移除
-# -- SELECT citus_remove_node('dev2', 5432); -- 需要管理员账号
-# 这会从 pg_dist_node 中删除该条记录，并停止将其用于新分片分配。
-
-
-# --- 创建Citus微服务 多租户 适用于对schema进行分布式的场景 schema对应租户名一致
-# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin -e _worker_hostname=dev2 -t tenant -e _citus_tenant_name=myfarm1 -e _citus_tenant_password=myfarm1
-# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin -e _worker_hostname=dev2 -t tenant -e _citus_tenant_name=myfarm2 -e _citus_tenant_password=myfarm2
-# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin -e _worker_hostname=dev2 -t tenant -e _citus_tenant_name=myfarm3 -e _citus_tenant_password=myfarm3
-
-# Example
-
-# dev is citus extension installed db
-# dev1 is coordinator node
-# dev2 is worker node
-
-# auto register coordinator node and add worker node to build citus cluster
-# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin -e _worker_hostname=dev2
-
-# verify citus extension is ready
-# playbooks/citus.yaml -e _coordinator_hostname=dev1 -e _citus_to_db=dev -e _pg_user=admin -e _pg_password=admin -e _worker_hostname=dev2 -t verify
+# Example:
+#   基础部署（coordinator + worker）：
+#     playbooks/citus/citus.yaml \
+#       -e _coordinator_hostname=pg_single_1 \
+#       -e _worker_hostname=pg_single_2 \
+#       -e _citus_to_db=dev \
+#       -e _pg_user=admin -e _pg_password=admin
+#
+#   验证集群状态：
+#     playbooks/citus/citus.yaml \
+#       -e _coordinator_hostname=pg_single_1 \
+#       -e _worker_hostname=pg_single_2 \
+#       -e _citus_to_db=dev \
+#       -e _pg_user=admin -e _pg_password=admin \
+#       -t verify
+#
+#   配置所有节点 DNS（多节点场景）：
+#     playbooks/citus/citus.yaml \
+#       -e _coordinator_hostname=pg_single_1 \
+#       -e _worker_hostname=pg_single_2 \
+#       -e _citus_to_db=dev \
+#       -e _pg_user=admin -e _pg_password=admin \
+#       -t dns \
+#       -e "_citus_all_nodes=['pg_single_1','pg_single_2','pg_single_3']"
+#
+#   创建多租户：
+#     playbooks/citus/citus.yaml \
+#       -e _coordinator_hostname=pg_single_1 \
+#       -e _worker_hostname=pg_single_2 \
+#       -e _citus_to_db=dev \
+#       -e _pg_user=admin -e _pg_password=admin \
+#       -t tenant \
+#       -e _citus_tenant_name=myfarm1 \
+#       -e _citus_tenant_password=myfarm1
 
 - name: Deploy citus on postgresql cluster
   hosts: localhost
   gather_facts: yes
   become: no
   vars:
-    _citus_all_nodes: []
     _coordinator_hostname: ""
+    _worker_hostname: ""
     _citus_to_db: ""
     _pg_user: ""
     _pg_password: ""
-    _worker_hostname: ""
     _postgres_port: 5432
+    _citus_all_nodes: "{{ [_coordinator_hostname, _worker_hostname] | unique }}"
     _citus_tenant_name: ""
     _citus_tenant_password: ""
   tasks:
     - name: Check params
       assert:
         that:
-          - _citus_all_nodes | length > 0
           - _coordinator_hostname is defined and _coordinator_hostname != ""
           - _citus_to_db is defined and _citus_to_db != ""
           - _pg_user is defined and _pg_user != ""
@@ -205,7 +106,16 @@
             create: yes
           delegate_to: "{{ _worker_hostname }}"
 
-        - name: Add citus all worker nodes to each worker /etc/hosts file
+        - name: Add citus all nodes to coordinator /etc/hosts file
+          lineinfile:
+            path: /etc/hosts
+            line: "{{ hostvars[item].ansible_host }} {{ item }}"
+            create: yes
+          loop: "{{ _citus_all_nodes }}"
+          delegate_to: "{{ _coordinator_hostname }}"
+          tags: [dns]
+
+        - name: Add citus all nodes to worker /etc/hosts file
           lineinfile:
             path: /etc/hosts
             line: "{{ hostvars[item].ansible_host }} {{ item }}"
