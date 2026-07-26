@@ -42,6 +42,15 @@ Patroni HA 集群（1 primary + N replica）× Citus ❌
 | `_citus_tenant_name` | 多租户名称（可选，配合 `-t tenant`） |
 | `_citus_tenant_password` | 多租户密码（可选，配合 `-t tenant`） |
 
+## Tag 说明
+
+| Tag | 说明 |
+|-----|------|
+| _(默认)_ | 安装扩展 + 配置 DNS + 注册 coordinator 和 worker 节点 |
+| `verify` | 验证集群状态 |
+| `dns` | 配置所有节点 DNS（多节点场景） |
+| `tenant` | 创建多租户 schema 并启用分布式 |
+
 ## 前置条件 - 安装 citus 扩展（多个 Patroni 单节点）
 
 Citus 需要在所有节点上安装扩展，假设有 3 个单节点分组：
