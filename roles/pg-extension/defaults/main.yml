@@ -6,7 +6,7 @@ postgres_port: 5432
 postgres_admin: postgres
 postgres_admin_password: CHANGEME
 
-pig_tool: "https://repo.pigsty.io/pkg/pig/v1.0.0/pig_1.0.0-1_amd64.deb"
+pig_tool: "https://repo.pigsty.io/pkg/pig/v1.5.1/pig_1.5.1-1_amd64.deb"
 pg_extensions:
   - "pg_cron"
   - "uuid-ossp"

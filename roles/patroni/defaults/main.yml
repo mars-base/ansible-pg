@@ -23,3 +23,7 @@ postgres_hba_auth_method: "md5"
 postgres_archive_command: ""
 postgres_restore_command: ""
 postgres_shared_preload_libraries: "pg_cron,pg_stat_statements,uuid-ossp" # 注意：pgmq需要在shared_preload_libraries中添加
+# Citus 节点间免密通信（可选）
+# 在 group_vars 中配置 Citus 节点的主机名列表，会在 pg_hba 中添加 trust 规则
+# 示例：patroni_citus_nodes: ['pg_single_1', 'pg_single_2', 'pg_single_3']
+patroni_citus_nodes: []

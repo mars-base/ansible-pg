@@ -154,16 +154,26 @@ pg_hba:
 **可选优化 — 节点间 trust 免密**：
 
 如果希望 Citus 节点间免密通信（减少分布式查询的密码传递开销），
-可修改 patroni 模板，在 `0.0.0.0/0 md5` 规则之前添加 trust 规则：
+在每个节点的 group_vars 中配置 Citus 节点主机名列表：
 
 ```yaml
-# 在 roles/patroni/templates/pg.yaml 的 pg_hba 中添加（放在 0.0.0.0/0 之前）
-# - host all all {{ hostvars['pg_single_1']['ansible_host'] }}/32 trust
-# - host all all {{ hostvars['pg_single_2']['ansible_host'] }}/32 trust
-# - host all all {{ hostvars['pg_single_3']['ansible_host'] }}/32 trust
+# group_vars/pg_single_1/pg_all.yaml（所有节点相同配置）
+patroni_citus_nodes:
+  - pg_single_1
+  - pg_single_2
+  - pg_single_3
 ```
 
-修改后更新 hba 并重启：
+这会在 `0.0.0.0/0` 规则之前自动为每个节点生成 trust 规则：
+
+```yaml
+- host all all <pg_single_1_ip>/32 trust
+- host all all <pg_single_2_ip>/32 trust
+- host all all <pg_single_3_ip>/32 trust
+- host all all 0.0.0.0/0 md5
+```
+
+配置后更新 hba 并重启：
 
 ```bash
 for host in pg_single_1 pg_single_2 pg_single_3; do
