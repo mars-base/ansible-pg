@@ -70,7 +70,7 @@ bootstrap:
         - host replication replicator {{ postgres_replication_trust_cidr }} {{ postgres_hba_auth_method }}
         - host replication replicator 127.0.0.1/32 {{ postgres_hba_auth_method }}
 {% for node in patroni_citus_nodes %}
-        - host all all {{ hostvars[node]['ansible_host'] }}/32 trust
+        - host all all {{ hostvars[node]['private_ip'] }}/32 trust
 {% endfor %}
         - host all all 0.0.0.0/0 {{ postgres_hba_auth_method }}
         #- hostssl all all 0.0.0.0/0 md5
