@@ -36,7 +36,7 @@
 
 - name: Install postgresql extensions
   shell: |
-    pig install "{{ item }}"
+    pig install "{{ item }}" -v {{ postgres_version }}
   args:
     executable: /bin/bash
   loop: "{{ pg_extensions }}"
