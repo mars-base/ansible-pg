@@ -2,7 +2,7 @@
 ---
 # tasks file for roles/patroni
 - name: Fetch system code
-  command: "lsb_release -c -s 2>/dev/null"
+  shell: "lsb_release -c -s"
   register: _lsb_release_code
   failed_when: _lsb_release_code.rc != 0 or _lsb_release_code.stdout == ""
 

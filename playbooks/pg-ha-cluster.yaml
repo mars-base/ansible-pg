@@ -47,9 +47,6 @@
     - role: proxy_haproxy_multi
       tags: haproxy
       when: "'haproxy' in pg_node_role[inventory_hostname]['roles']"
-    - role: pgbouncer
-      tags: pgbouncer
-      when: "'pgbouncer' in pg_node_role[inventory_hostname]['roles']"
     - role: pg-extension
       tags: ["pg-extension", "ext"]
       when: "'patroni' in pg_node_role[inventory_hostname]['roles']"
@@ -62,6 +59,9 @@
     - role: patroni-initdb
       tags: ["patroni-initdb", "initdb"]
       when: "'patroni' in pg_node_role[inventory_hostname]['roles']"
+    - role: pgbouncer
+      tags: pgbouncer
+      when: "'pgbouncer' in pg_node_role[inventory_hostname]['roles']"
     - role: pgbackrest
       tags: pgbackrest
       when: "'pgbackrest' in pg_node_role[inventory_hostname]['roles']"

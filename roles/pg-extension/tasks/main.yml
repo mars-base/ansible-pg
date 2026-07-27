@@ -2,7 +2,7 @@
 ---
 # tasks file for roles/pg-ext
 - name: Fetch system code
-  command: "lsb_release -c -s 2>/dev/null"
+  shell: "lsb_release -c -s"
   register: _lsb_release_code
   failed_when: _lsb_release_code.rc != 0 or _lsb_release_code.stdout == ""
 
@@ -36,7 +36,7 @@
 
 - name: Install postgresql extensions
   shell: |
-    pig install "{{ item }}" -v {{ postgres_version }}
+    pig install "{{ item }}" -v {{ postgres_version }} -y
   args:
     executable: /bin/bash
   loop: "{{ pg_extensions }}"
