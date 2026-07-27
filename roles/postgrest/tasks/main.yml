@@ -17,6 +17,11 @@
     debug:
       msg: "Patroni node info:\nhost:{{ _patroni_primary.json.patroni.name }}\nrole:{{ _patroni_primary.json.role }}"
 
+  - name: Install python3-psycopg2 for community.postgresql modules
+    ansible.builtin.apt:
+      name: python3-psycopg2
+      state: present
+
   - name: Grant annonymous role permission on database
     community.postgresql.postgresql_query:
       db: "{{ postgrest_db}}"

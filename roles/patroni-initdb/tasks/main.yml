@@ -46,6 +46,13 @@
   tags: [test]
 
 # 在primary节点上创建数据库、用户、分配权限
+- name: Install python3-psycopg2 for community.postgresql modules
+  ansible.builtin.apt:
+    name: python3-psycopg2
+    state: present
+  when: _patroni_primary.json.role == "primary"
+  tags: [primary]
+
 - block:
 
   - name: Create postgres database

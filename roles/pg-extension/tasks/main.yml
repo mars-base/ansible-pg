@@ -44,6 +44,13 @@
   when: item is defined and item != ""
   failed_when: _install_ext.rc != 0
 
+- name: Install python3-psycopg2 for community.postgresql modules
+  ansible.builtin.apt:
+    name: python3-psycopg2
+    state: present
+  when: pg_create_extensions or pg_create_extensions == 'true'
+  tags: [create]
+
 - block:
   - name: Check if this node is PostgreSQL primary
     community.postgresql.postgresql_query:
