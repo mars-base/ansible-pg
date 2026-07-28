@@ -1,0 +1,195 @@
+---
+
+# NOTE:
+# 单机版 PostgreSQL 部署配置（无 WAL 备份模式）
+# 适用于轻量级场景，自带 pgmq 消息队列扩展
+#
+# 组件清单：
+#   - etcd       : patroni 高可用依赖的分布式 KV 存储（单机模式）
+#   - patroni    : PostgreSQL 高可用管理，自动故障切换
+#   - pgbouncer  : 连接池代理，监听 5433 端口
+#
+# 不包含：
+#   - pgbackrest : 无 WAL 归档和备份恢复
+#   - cron       : 无定时备份任务
+#   - postgrest  : 无 RESTful API 服务
+#
+# 使用前：
+#   1. 将 CHANGEME 替换为实际密码
+#   2. 修改节点名称、IP 等主机信息（在 hosts.ini 中配置）
+#   3. 复制到 pg_all.yaml 使用
+#   4. 部署命令：
+#      ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=<your-host>
+#      # 创建数据库和扩展（首次部署）：
+#      ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=<your-host> -e pg_create_extensions=true -t initdb,create
+#
+# 部署后连接方式：
+#   PGPASSWORD='[dba密码]' psql -h <host-ip> -p 5433 -U dba -d dev
+
+# ----------------------------------------------
+# 节点角色定义
+# 仅启用 etcd + patroni + pgbouncer，无备份组件
+pg_node_role:
+  pg-single:   # TODO: 替换为实际主机名（与 hosts.ini 一致）
+    roles:
+      - etcd
+      - patroni
+      - pgbouncer
+
+# ----------------------------------------------
+# etcd 集群配置（单机模式）
+etcds_cluster_hosts:
+  - name: "pg-single"   # TODO: 替换为实际主机名
+    ip:   "{{ private_ip }}"
+    num: 1
+etcds_child_count: 1
+etcds_port_roof_client: 12379
+etcds_dir: "/data/pgsingle/etcds"
+etcds_inner_ip: "{{ private_ip }}"   # 使用内网 IP 通信
+
+# ----------------------------------------------
+# PostgreSQL 数据库用户配置
+postgres_admin: postgres
+postgres_admin_password: CHANGEME          # TODO: postgres 超级用户密码
+postgres_dba_username: dba
+postgres_dba_password: CHANGEME            # TODO: dba 用户密码（应用读写）
+postgres_readonly_username: ro
+postgres_readonly_password: CHANGEME       # TODO: 只读用户密码（应用只读）
+
+# ----------------------------------------------
+# pgbouncer 连接池配置
+pgbouncer_dir: /data/pgsingle/pgbouncer
+pgbouncer_listen_addr: "{{ private_ip }}"  # 监听内网 IP
+pgbouncer_listen_port: 5433
+pgbouncer_socket_dir: "{{ pgbouncer_dir }}"
+pgbouncer_pool_mode: transaction           # transaction 事务模式（推荐），session 会话模式
+pgbouncer_users:
+  - name: "{{ postgres_admin }}"
+    password: "{{ postgres_admin_password }}"
+  - name: "{{ postgres_dba_username }}"
+    password: "{{ postgres_dba_password }}"
+  - name: "{{ postgres_readonly_username }}"
+    password: "{{ postgres_readonly_password }}"
+pgbouncer_databases:
+  - name: postgres
+    host: "{{ private_ip }}"
+    port: 5432
+    dbname: postgres
+  - name: dev
+    host: "{{ private_ip }}"
+    port: 5432
+    dbname: dev
+  - name: prod
+    host: "{{ private_ip }}"
+    port: 5432
+    dbname: prod
+
+# ----------------------------------------------
+# patroni 高可用配置
+patroni_etcd_address: "{{ private_ip }}:12379"
+patroni_cluster_name: "pg-single"   # TODO: 替换为实际集群名称
+patroni_dir: "/data/pgsingle/patroni"
+
+postgres_version: 17
+postgres_replication_username: "replicator"
+postgres_replication_password: CHANGEME        # TODO: 复制用户密码（单机暂不用，预留）
+postgres_superuser_username: "{{ postgres_admin }}"
+postgres_superuser_password: "{{ postgres_admin_password }}"
+postgres_rewind_username: "rewind"
+postgres_rewind_password: CHANGEME             # TODO: rewind 用户密码（单机暂不用，预留）
+postgres_data_dir: "{{ patroni_dir }}/postgres/data"
+postgres_replication_trust_cidr: "{{ private_ip }}/24"
+
+# 无 WAL 归档：archive_command 和 restore_command 留空
+postgres_archive_command: ""
+postgres_restore_command: ""
+
+# ----------------------------------------------
+# 数据库和用户权限配置
+postgres_users:
+  - name: "{{ postgres_dba_username }}"
+    password: "{{ postgres_dba_password }}"
+  - name: "{{ postgres_readonly_username }}"
+    password: "{{ postgres_readonly_password }}"
+
+postgres_dbs:
+  - dev
+  - prod
+
+postgres_privs:
+  # dba 用户对 dev/prod 数据库拥有 ALL 权限
+  - db: dev
+    user: "{{ postgres_dba_username }}"
+    type: database
+    priv: ALL
+    schema: public
+    schema_priv: CREATE,USAGE
+  - db: prod
+    user: "{{ postgres_dba_username }}"
+    type: database
+    priv: ALL
+    schema: public
+    schema_priv: CREATE,USAGE
+  # 只读用户对 dev/prod 的 public schema 表拥有 SELECT 权限
+  - db: dev
+    user: "{{ postgres_readonly_username }}"
+    type: table
+    priv: SELECT
+    schema: public
+    auto_inherit: true
+    table_creator: "{{ postgres_dba_username }}"
+  - db: prod
+    user: "{{ postgres_readonly_username }}"
+    type: table
+    priv: SELECT
+    schema: public
+    auto_inherit: true
+    table_creator: "{{ postgres_dba_username }}"
+  # pgmq 扩展权限：dba 用户可操作 pgmq schema 下的表
+  - db: dev
+    user: "{{ postgres_dba_username }}"
+    type: database
+    priv: ALL
+    schema: pgmq
+    schema_priv: CREATE,USAGE
+  - db: dev
+    user: "{{ postgres_dba_username }}"
+    type: table
+    priv: SELECT,INSERT,UPDATE,DELETE
+    schema: pgmq
+    auto_inherit: true
+    table_creator: "{{ postgres_admin }}"
+  - db: prod
+    user: "{{ postgres_dba_username }}"
+    type: database
+    priv: ALL
+    schema: pgmq
+    schema_priv: CREATE,USAGE
+  - db: prod
+    user: "{{ postgres_dba_username }}"
+    type: table
+    priv: SELECT,INSERT,UPDATE,DELETE
+    schema: pgmq
+    auto_inherit: true
+    table_creator: "{{ postgres_admin }}"
+
+# ----------------------------------------------
+# PostgreSQL 扩展配置
+# pgmq 是纯 SQL 扩展，不能放入 shared_preload_libraries
+postgres_shared_preload_libraries: "pg_stat_statements,uuid-ossp"
+
+pg_extensions:
+  - "uuid-ossp"
+  - "pg_stat_statements"
+  - "pgmq"
+
+# 部署时自动执行 CREATE EXTENSION（在 primary 节点的 dev/prod 数据库中创建扩展）
+pg_create_extensions: true
+
+pg_extensions_on:
+  - { db: 'dev',  extension: 'pg_stat_statements' }
+  - { db: 'prod', extension: 'pg_stat_statements' }
+  - { db: 'dev',  extension: 'uuid-ossp' }
+  - { db: 'prod', extension: 'uuid-ossp' }
+  - { db: 'dev',  extension: 'pgmq' }
+  - { db: 'prod', extension: 'pgmq' }
