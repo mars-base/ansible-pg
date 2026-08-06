@@ -122,10 +122,10 @@
     pg_databases:
       - dev
       - prod
-    # PG 连接参数（可通过 -e 覆盖，默认使用 group_vars 中的变量）
+    # PG 连接参数（可通过 -e 覆盖）
     _pg_host: "{{ pg_host | default(ansible_default_ipv4.address) }}"
     _pg_port: "{{ pg_port | default(5432) }}"
-    _pg_user: "{{ pg_user | default(postgres_dba_username) }}"
+    _pg_user: "{{ pg_user | default('dba') }}"
     _pg_password: "{{ pg_password | default(postgres_dba_password) }}"
   tasks:
     - name: Show connection info
