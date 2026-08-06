@@ -46,6 +46,61 @@
 #   SELECT kv_get_text('test:key1');
 #   SELECT json_set('test:json1', '{"hello":"world"}');
 #   SELECT json_get('test:json1');
+#
+# -------------------------------------------------------
+# BYTEA 通用缓存函数（kv_cache 表，value 类型 BYTEA）
+# -------------------------------------------------------
+#   kv_set(key TEXT, value BYTEA, ttl INT DEFAULT 300)
+#       写入缓存，UPSERT 原子操作，默认 300s 过期，返回 VOID
+#
+#   kv_set_with_result(key TEXT, value BYTEA, ttl INT DEFAULT 300)
+#       同上，返回 BOOLEAN 表示是否成功
+#
+#   kv_get(key TEXT) → BYTEA
+#       读取缓存（自动过滤过期），不存在或已过期返回 NULL
+#
+#   kv_get_text(key TEXT) → TEXT
+#       读取缓存并转为文本（convert_from UTF8）
+#
+#   kv_del(key TEXT)
+#       删除指定缓存
+#
+#   kv_cleanup_batch(max_rows INT DEFAULT 1000) → INT
+#       分批清理过期数据（每次最多 max_rows 条），返回实际删除数量
+#
+# -------------------------------------------------------
+# JSONB 专用缓存函数（kv_cache_json 表，value 类型 JSONB，含 GIN 索引）
+# -------------------------------------------------------
+#   json_set(key TEXT, value JSONB, ttl INT DEFAULT 300)
+#       写入 JSON 缓存，UPSERT 原子操作，返回 VOID
+#
+#   json_set_with_result(key TEXT, value JSONB, ttl INT DEFAULT 300)
+#       同上，返回 BOOLEAN
+#
+#   json_get(key TEXT) → JSONB
+#       读取整个 JSON 对象，不存在或已过期返回 NULL
+#
+#   json_get_field(key TEXT, field TEXT) → TEXT
+#       读取指定字段的文本值（->>）
+#
+#   json_get_field_json(key TEXT, field TEXT) → JSONB
+#       读取指定字段的 JSONB 值（->），可继续链式操作
+#
+#   json_contains(key TEXT, query JSONB) → BOOLEAN
+#       检查缓存是否包含指定 JSON（@> 操作符，利用 GIN 索引）
+#
+#   json_update_field(key TEXT, field TEXT, value TEXT, ttl INT DEFAULT 300) → BOOLEAN
+#       局部更新指定字段（智能类型转换：数字/布尔/数组/对象/字符串）
+#       字段不存在时自动创建，返回是否成功
+#
+#   json_del(key TEXT)
+#       删除指定 JSON 缓存
+#
+#   json_cleanup_batch(max_rows INT DEFAULT 1000) → INT
+#       分批清理过期数据，返回实际删除数量
+#
+# -------------------------------------------------------
+# 清理策略：建议通过 cron 或应用层每 5 分钟调用一次 cleanup_batch(1000)
 
 - name: Deploy KV cache to PostgreSQL
   gather_facts: true
