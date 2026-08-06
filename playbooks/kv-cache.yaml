@@ -188,7 +188,27 @@
       loop: "{{ _sql_files }}"
       tags: [sync]
 
-    - name: Deploy KV cache SQL to databases
+    - name: Grant kv_cache table permissions to dba user
+      shell: |
+        export PGPASSWORD="{{ postgres_admin_password }}"
+        psql -h {{ _pg_host }} -p {{ _pg_port }} -U {{ postgres_admin }} -d {{ item }} -c "
+          DO \$\$
+          BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'kv_cache') THEN
+              EXECUTE 'GRANT ALL ON kv_cache TO {{ postgres_dba_username }}';
+            END IF;
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'kv_cache_json') THEN
+              EXECUTE 'GRANT ALL ON kv_cache_json TO {{ postgres_dba_username }}';
+            END IF;
+          END
+          \$\$;
+        "
+      args:
+        executable: /bin/bash
+      loop: "{{ pg_databases }}"
+      tags: [grant]
+
+    - name: Show deploy results
       shell: |
         export PGPASSWORD="{{ _pg_password }}"
         psql -h {{ _pg_host }} -p {{ _pg_port }} -U {{ _pg_user }} -d {{ item.1 }} -f {{ _sql_dir }}/{{ item.0 }}
