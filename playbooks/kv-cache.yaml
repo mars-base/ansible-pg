@@ -1,0 +1,189 @@
+---
+
+# 部署 PostgreSQL KV 缓存应用
+# 包含通用缓存（BYTEA）和 JSON 专用缓存两套方案
+#
+# 参数：
+#   HOSTS:        目标主机（默认 pg-single），SQL 文件通过此主机同步到远程
+#   pg_host:      PG 连接地址（默认 ansible_default_ipv4.address）
+#   pg_port:      PG 连接端口（默认 5432）
+#   pg_user:      PG 连接用户（默认 postgres_admin）
+#   pg_password:  PG 连接密码（默认 postgres_admin_password）
+#   pg_databases: 要部署的数据库列表（默认 [dev, prod]）
+#   kv_type:      部署类型（默认 all）
+#                   all   - 同时部署 BYTEA 通用缓存 + JSONB 专用缓存
+#                   bytea - 仅部署 BYTEA 通用缓存
+#                   json  - 仅部署 JSONB 专用缓存
+#
+# 使用方式：
+#   # 部署两套缓存到 pg-single（使用 group_vars 中的默认连接参数）
+#   ansible-playbook -i hosts.ini playbooks/kv-cache.yaml
+#
+#   # 仅部署 JSONB 缓存
+#   ansible-playbook -i hosts.ini playbooks/kv-cache.yaml -e kv_type=json
+#
+#   # 仅部署 BYTEA 缓存
+#   ansible-playbook -i hosts.ini playbooks/kv-cache.yaml -e kv_type=bytea
+#
+#   # 指定其他主机
+#   ansible-playbook -i hosts.ini playbooks/kv-cache.yaml -e HOSTS=d37-mongo-log
+#
+#   # 仅部署到 dev 数据库
+#   ansible-playbook -i hosts.ini playbooks/kv-cache.yaml -e 'pg_databases=["dev"]'
+#
+#   # 连接到外部 PG 实例（通过 pgbouncer 5433 端口）
+#   ansible-playbook -i hosts.ini playbooks/kv-cache.yaml \
+#     -e pg_host=120.24.237.92 -e pg_port=5433 -e pg_user=postgres -e pg_password=3HhtUyJd
+#
+#   # 连接到外部 PG 实例（仅部署 JSONB 缓存到指定库）
+#   ansible-playbook -i hosts.ini playbooks/kv-cache.yaml \
+#     -e pg_host=10.3.4.71 -e pg_port=5433 -e pg_user=dba -e pg_password=H1p21FXF \
+#     -e 'pg_databases=["dev"]' -e kv_type=json
+#
+# 部署后验证：
+#   PGPASSWORD='[密码]' psql -h [host] -p [port] -U [user] -d dev
+#   SELECT kv_set('test:key1', 'hello', 60);
+#   SELECT kv_get_text('test:key1');
+#   SELECT json_set('test:json1', '{"hello":"world"}');
+#   SELECT json_get('test:json1');
+
+- name: Deploy KV cache to PostgreSQL
+  gather_facts: true
+  hosts: "{{ HOSTS | default('pg-single') }}"
+  become: true
+  become_user: root
+  become_method: sudo
+  vars:
+    _sql_dir: "/srv/pgsql"
+    _kv_sql_map:
+      all:
+        - pg-kv-cache.sql
+        - pg-kv-cache-json.sql
+      bytea:
+        - pg-kv-cache.sql
+      json:
+        - pg-kv-cache-json.sql
+    _sql_files: "{{ _kv_sql_map[kv_type | default('all')] }}"
+    pg_databases:
+      - dev
+      - prod
+    # PG 连接参数（可通过 -e 覆盖，默认使用 group_vars 中的变量）
+    _pg_host: "{{ pg_host | default(ansible_default_ipv4.address) }}"
+    _pg_port: "{{ pg_port | default(5432) }}"
+    _pg_user: "{{ pg_user | default(postgres_admin) }}"
+    _pg_password: "{{ pg_password | default(postgres_admin_password) }}"
+  tasks:
+    - name: Show connection info
+      debug:
+        msg: |
+          Deploy KV cache to:
+            Host: {{ _pg_host }}
+            Port: {{ _pg_port }}
+            User: {{ _pg_user }}
+            Databases: {{ pg_databases | join(', ') }}
+            Type: {{ kv_type | default('all') }}
+            SQL files: {{ _sql_files | join(', ') }}
+
+    - name: Select the primary node by patroni api
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}:8008/"
+        method: GET
+        return_content: true
+        status_code: 200
+        body_format: json
+      register: _patroni_primary
+      changed_when: false
+      failed_when: false
+      when: pg_host is not defined
+
+    - name: Fail if not primary node
+      fail:
+        msg: "This playbook must run on the primary node. Current role: {{ _patroni_primary.json.role | default('unknown') }}"
+      when:
+        - pg_host is not defined
+        - _patroni_primary.json.role | default('') != "primary"
+
+    - block:
+        - name: Check sql files exist locally
+          stat:
+            path: "{{ inventory_dir }}/sql/{{ item }}"
+          loop: "{{ _sql_files }}"
+          register: _sql_checks
+          delegate_to: localhost
+
+        - name: Fail if any sql file missing
+          fail:
+            msg: "SQL file {{ item.item }} not found in sql/ directory"
+          loop: "{{ _sql_checks.results }}"
+          when: not item.stat.exists
+      tags: [check]
+
+    - name: Create sql dir on remote
+      file:
+        path: "{{ _sql_dir }}"
+        state: directory
+        mode: 0755
+      tags: [sync]
+
+    - name: Sync sql files to remote
+      synchronize:
+        src: "{{ inventory_dir }}/sql/{{ item }}"
+        dest: "{{ _sql_dir }}/{{ item }}"
+        mode: push
+      loop: "{{ _sql_files }}"
+      tags: [sync]
+
+    - name: Deploy KV cache SQL to databases
+      shell: |
+        export PGPASSWORD="{{ _pg_password }}"
+        psql -h {{ _pg_host }} -p {{ _pg_port }} -U {{ _pg_user }} -d {{ item.1 }} -f {{ _sql_dir }}/{{ item.0 }}
+      args:
+        executable: /bin/bash
+      loop: "{{ _sql_files | product(pg_databases) | list }}"
+      register: _deploy_result
+      tags: [deploy]
+
+    - name: Show deploy results
+      debug:
+        msg: "File: {{ item.item.0 }} → DB: {{ item.item.1 }}\n{{ item.stdout_lines[-5:] | default([]) | join('\n') }}"
+      loop: "{{ _deploy_result.results }}"
+      tags: [deploy]
+
+    - name: Verify KV cache functions
+      shell: |
+        export PGPASSWORD="{{ _pg_password }}"
+        psql -h {{ _pg_host }} -p {{ _pg_port }} -U {{ _pg_user }} -d {{ item }} -t -c "
+          SELECT COUNT(*) FROM pg_proc WHERE proname IN ('kv_set','kv_get','kv_del','kv_cleanup_batch','kv_get_text','kv_set_with_result');
+        "
+      args:
+        executable: /bin/bash
+      loop: "{{ pg_databases }}"
+      register: _kv_count
+      tags: [verify]
+
+    - name: Verify JSON cache functions
+      shell: |
+        export PGPASSWORD="{{ _pg_password }}"
+        psql -h {{ _pg_host }} -p {{ _pg_port }} -U {{ _pg_user }} -d {{ item }} -t -c "
+          SELECT COUNT(*) FROM pg_proc WHERE proname IN ('json_set','json_get','json_del','json_cleanup_batch','json_get_field','json_get_field_json','json_contains','json_update_field','json_set_with_result');
+        "
+      args:
+        executable: /bin/bash
+      loop: "{{ pg_databases }}"
+      register: _json_count
+      tags: [verify]
+
+    - name: Show verification summary
+      debug:
+        msg: |
+          KV cache deployed to: {{ pg_databases | join(', ') }}
+          Connection: {{ _pg_user }}@{{ _pg_host }}:{{ _pg_port }}
+          {% for r in _kv_count.results %}
+          DB {{ r.item }}: KV functions = {{ r.stdout | trim }}, JSON functions = {{ _json_count.results[idx].stdout | trim }}
+          {% endfor %}
+      vars:
+        idx: "{{ loop.index0 }}"
+      loop: "{{ pg_databases }}"
+      loop_control:
+        index_var: idx
+      tags: [verify]
