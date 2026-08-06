@@ -125,8 +125,8 @@
     # PG 连接参数（可通过 -e 覆盖，默认使用 group_vars 中的变量）
     _pg_host: "{{ pg_host | default(ansible_default_ipv4.address) }}"
     _pg_port: "{{ pg_port | default(5432) }}"
-    _pg_user: "{{ pg_user | default(postgres_admin) }}"
-    _pg_password: "{{ pg_password | default(postgres_admin_password) }}"
+    _pg_user: "{{ pg_user | default(postgres_dba_username) }}"
+    _pg_password: "{{ pg_password | default(postgres_dba_password) }}"
   tasks:
     - name: Show connection info
       debug:
@@ -187,26 +187,6 @@
         mode: push
       loop: "{{ _sql_files }}"
       tags: [sync]
-
-    - name: Grant kv_cache table permissions to dba user
-      shell: |
-        export PGPASSWORD="{{ postgres_admin_password }}"
-        psql -h {{ _pg_host }} -p {{ _pg_port }} -U {{ postgres_admin }} -d {{ item }} -c "
-          DO \$\$
-          BEGIN
-            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'kv_cache') THEN
-              EXECUTE 'GRANT ALL ON kv_cache TO {{ postgres_dba_username }}';
-            END IF;
-            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'kv_cache_json') THEN
-              EXECUTE 'GRANT ALL ON kv_cache_json TO {{ postgres_dba_username }}';
-            END IF;
-          END
-          \$\$;
-        "
-      args:
-        executable: /bin/bash
-      loop: "{{ pg_databases }}"
-      tags: [grant]
 
     - name: Show deploy results
       shell: |
