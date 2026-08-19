@@ -277,19 +277,32 @@ postgres_privs:
 
 # 配置postgresql数据库扩展
 # pig_tool: "https://repo.pigsty.io/pkg/pig/v1.0.0/pig_1.0.0-1_amd64.deb"
-postgres_shared_preload_libraries: "pg_cron,pg_stat_statements,uuid-ossp"
+postgres_shared_preload_libraries: "pg_cron,pg_stat_statements,uuid-ossp,pg_duckdb"
+duckdb_postgres_role: "dba"  # 允许使用 DuckDB 功能的角色（仅支持单角色）
+# 内置角色授予（用于 pg_duckdb 文件系统访问等）
+postgres_role_grants:
+  - { user: "{{ postgres_dba_username }}", role: pg_read_server_files }
+  - { user: "{{ postgres_dba_username }}", role: pg_write_server_files }
 pg_extensions:
   - "pg_cron"
   - "uuid-ossp"
   - "pg_stat_statements"
   - "pgmq"
+  - "pgvector"
+  - "pg_duckdb"
+  - "pgcrypto"
 pg_create_extensions: false
 pg_extensions_on:
   - { db: 'dev', extension: 'pg_stat_statements' }
   - { db: 'prod', extension: 'pg_stat_statements' }
   - { db: 'postgres', extension: 'pg_cron' } # pg_cron固定配置到postgres数据库
-  - { db: 'postgres', extension: 'pg_cron' }
   - { db: 'dev', extension: 'uuid-ossp' }
   - { db: 'prod', extension: 'uuid-ossp' }
   - { db: 'dev', extension: 'pgmq' }
   - { db: 'prod', extension: 'pgmq' }
+  - { db: 'dev', extension: 'vector' }  # pgvector 扩展（SQL 名称是 vector）
+  - { db: 'prod', extension: 'vector' }
+  - { db: 'dev', extension: 'pg_duckdb' }
+  - { db: 'prod', extension: 'pg_duckdb' }
+  - { db: 'dev', extension: 'pgcrypto' }
+  - { db: 'prod', extension: 'pgcrypto' }
