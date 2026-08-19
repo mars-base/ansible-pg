@@ -417,7 +417,7 @@ ansible pg-single -i hosts.ini -b -a "supervisorctl restart ferretdb-app1"
 
 ```bash
 # 使用 mongosh 连接
-mongosh "mongodb://dba:<password>@10.241.21.97:27017/postgres"
+mongosh "mongodb://dba:<password>@10.241.21.97:27017/myapp"
 
 # 运行 Python 测试脚本（需要 pymongo: uv add pymongo）
 uv run python3 test/test_ferretdb.py -H 10.241.21.97 -p 27017 -U dba -W <password>
