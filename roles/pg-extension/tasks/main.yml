@@ -83,7 +83,7 @@
       login_password: "{{ postgres_admin_password }}"
       login_host: "{{ postgres_host | default('localhost') }}"
       login_port: "{{ postgres_port | default(5432) }}"
-      query: "CREATE EXTENSION IF NOT EXISTS \"{{ item.extension }}\";"
+      query: "CREATE EXTENSION IF NOT EXISTS \"{{ item.extension }}\" {{ 'CASCADE' if item.cascade | default(false) else '' }};"
     loop: "{{ pg_extensions_on }}"
     when: not is_recovery.query_result[0]['pg_is_in_recovery']
   when: pg_create_extensions or pg_create_extensions == 'true'

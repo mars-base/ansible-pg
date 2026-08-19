@@ -225,8 +225,9 @@ postgres_privs:
     table_creator: postgres
 
 # pig_tool: "https://repo.pigsty.io/pkg/pig/v1.0.0/pig_1.0.0-1_amd64.deb"
-postgres_shared_preload_libraries: "pg_cron,pg_stat_statements,uuid-ossp,pg_duckdb"
+postgres_shared_preload_libraries: "pg_cron,pg_stat_statements,uuid-ossp,pg_duckdb,pg_documentdb_core,pg_documentdb"
 duckdb_postgres_role: "dba"  # 允许使用 DuckDB 功能的角色（仅支持单角色）
+documentdb_postgres_role: "dba"  # 允许使用 DocumentDB API 的角色
 # 内置角色授予（用于 pg_duckdb 文件系统访问等）
 postgres_role_grants:
   - { user: dba, role: pg_read_server_files }
@@ -239,6 +240,8 @@ pg_extensions:
   - "pgvector"
   - "pg_duckdb"
   - "pgcrypto"
+  - "documentdb"    # DocumentDB（MongoDB 兼容）
+  - "rum"           # pg_documentdb 依赖
 pg_create_extensions: false
 pg_extensions_on:
   - { db: 'dev', extension: 'pg_stat_statements' }
@@ -254,6 +257,7 @@ pg_extensions_on:
   - { db: 'prod', extension: 'pg_duckdb' }
   - { db: 'dev', extension: 'pgcrypto' }
   - { db: 'prod', extension: 'pgcrypto' }
+  - { db: 'postgres', extension: 'documentdb', cascade: true }  # documentdb 只能装在 postgres 库
 
 # postgrest 配置，作为 postgresql 数据库的 RESTful API 服务器
 postgrest_user: dba

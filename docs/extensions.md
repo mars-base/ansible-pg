@@ -24,6 +24,8 @@
 | pgvector (vector) | 0.8.6 | PGDG | dev, prod | 向量搜索 |
 | pg_duckdb | 1.1.0 | Pigsty | dev, prod | DuckDB 嵌入式 OLAP，需 shared_preload_libraries |
 | pgcrypto | 1.3 | contrib | dev, prod | 加密函数（md5/sha/gen_random_bytes 等） |
+| documentdb | 0.114-0 | Pigsty | postgres | Microsoft DocumentDB（MongoDB 兼容），需 shared_preload_libraries |
+| rum | - | PGDG | - | pg_documentdb 依赖（GIN 索引增强） |
 
 ## 常用扩展配置
 
@@ -115,6 +117,8 @@ pg_extensions_on:
 | `pgjwt` | `pgjwt` | Pigsty | JWT 生成验证 |
 | `hstore` | `hstore` | contrib | 键值对 |
 | `pgvectorscale` | `vectorscale` | Pigsty | pgvector 高性能补充 |
+| `documentdb` | `documentdb` | Pigsty | DocumentDB（MongoDB 兼容），需 `cascade: true` |
+| `rum` | `rum` | PGDG | GIN 索引增强，pg_documentdb 依赖 |
 
 > 更多扩展见 https://ext.pigsty.io/list/pkg/
 
@@ -215,6 +219,131 @@ ansible-playbook -i hosts.ini playbooks/pgsql.yaml \
   -e pg_password=<password> -e pg_database=dev \
   -e sql_file=test_duckdb.sql
 ```
+
+### pg_documentdb（DocumentDB - MongoDB 兼容）
+
+pg_documentdb 是 Microsoft 开源的 MongoDB 兼容层，让 PostgreSQL 能够处理 MongoDB 协议和数据格式。需要多项额外配置：
+
+**1. shared_preload_libraries 预加载**
+
+在 `postgres_shared_preload_libraries` 中同时添加 `pg_documentdb_core` 和 `pg_documentdb`：
+
+```yaml
+postgres_shared_preload_libraries: "pg_cron,pg_stat_statements,uuid-ossp,pg_duckdb,pg_documentdb_core,pg_documentdb"
+```
+
+> **重要**：必须同时预加载 `pg_documentdb_core` 和 `pg_documentdb`，只加载 `pg_documentdb` 会导致 PG 启动失败。
+
+修改后需重启 Patroni 生效。
+
+**2. documentdb_postgres_role 权限配置**
+
+pg_documentdb 安装后会自动创建多个 schema 和角色。默认只有 `postgres` 超级用户有权限使用。要让非 postgres 用户（如 `dba`）使用 documentdb API，需要配置 `documentdb_postgres_role` 变量：
+
+```yaml
+documentdb_postgres_role: "dba"  # 允许使用 DocumentDB API 的角色
+```
+
+当 `pg_extensions` 中包含 `documentdb` 且设置了 `documentdb_postgres_role` 时，`patroni-initdb` 角色会自动执行以下权限授予：
+
+- 授予 10 个 documentdb schema 的 USAGE 权限
+- 授予 5 个 documentdb 内置角色（`documentdb_admin_role` 等）的成员资格
+- 授予 `documentdb_api_catalog` 下所有表和序列的 ALL 权限
+- 授予 `documentdb_data` schema 的 ALL 权限（用于动态创建表）
+
+> **注意**：pg_documentdb 内部使用 libpq 连接数据库，会自动覆盖连接字符串中的 `user` 为当前 session user。因此需要确保 `documentdb_postgres_role` 指定的用户拥有完整权限，或在 `pg_hba` 中配置 trust 规则。
+
+**3. 依赖扩展 rum**
+
+pg_documentdb 依赖 `rum` 扩展（GIN 索引增强），需要先安装：
+
+```yaml
+pg_extensions:
+  - "rum"           # pg_documentdb 依赖
+  - "documentdb"    # DocumentDB
+```
+
+**4. 数据库限制**
+
+pg_documentdb **只能**在 `postgres` 数据库中创建，不能在 `dev`、`prod` 等其他数据库中创建：
+
+```yaml
+pg_extensions_on:
+  - { db: 'postgres', extension: 'documentdb', cascade: true }  # 必须用 postgres 库
+```
+
+> 在 `dev` 或 `prod` 库中执行 `CREATE EXTENSION documentdb` 会报错：`extension "documentdb" is not available for database "dev"`。
+
+**5. 名称映射**
+
+pg_documentdb 涉及多个名称，容易混淆：
+
+| 场景 | 名称 | 说明 |
+|------|------|------|
+| apt 包名 | `postgresql-17-documentdb` | Pigsty 仓库提供 |
+| pg_extensions 值 | `documentdb` | pig install 用 |
+| .so 文件名 | `pg_documentdb.so` | shared_preload_libraries 中写 `pg_documentdb` |
+| SQL 扩展名 | `documentdb` | CREATE EXTENSION 用 |
+| Schema 名 | `documentdb_api` | API 函数所在 schema |
+
+**6. API 使用说明**
+
+pg_documentdb 提供 `documentdb_api` schema 下的函数，兼容 MongoDB API：
+
+```sql
+-- 创建集合（类似 MongoDB 的 collection）
+SELECT documentdb_api.create_collection('mydb', 'products');
+
+-- 插入文档（类似 MongoDB 的 insertOne）
+SELECT documentdb_api.insert_one('mydb', 'products', '{
+  "name": "iPhone 15 Pro",
+  "category": "手机",
+  "price": 8999,
+  "tags": ["apple", "5g"]
+}');
+
+-- 查询所有文档
+SELECT document FROM documentdb_api.collection('mydb', 'products');
+
+-- 统计文档数量
+SELECT count(*) FROM documentdb_api.collection('mydb', 'products');
+
+-- 删除集合
+SELECT documentdb_api.drop_collection('mydb', 'products');
+```
+
+> **注意**：当前版本（0.114-0）的 `documentdb_api.bson_match` 等查询函数可能不可用，建议使用基础 CRUD API。
+
+**部署步骤**：
+
+```bash
+# 1. 更新 Patroni 配置（写入 shared_preload_libraries）
+ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t patroni-config
+
+# 2. 重启 Patroni 使预加载参数生效
+ansible pg-single -i hosts.ini -b -a "supervisorctl restart patroni"
+
+# 3. 安装扩展并启用（自动执行 documentdb_postgres_role 权限授予）
+ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t pg-extension,initdb -e pg_create_extensions=true
+```
+
+**验证**：
+
+```bash
+# 运行 Python 测试脚本（使用 dba 用户通过 pgbouncer 5433 端口测试）
+python3 sql/test_documentdb.py \
+  -H 10.241.21.97 -p 5433 \
+  -U dba -W <password> -d postgres
+```
+
+测试脚本会自动创建集合、插入 3 个文档、查询并清理，输出 PASS/FAIL 状态。
+
+**已知限制**：
+
+- 只能在 `postgres` 数据库中创建和使用
+- 查询结果返回 BSON 类型（hex 格式），需要额外解析或转换
+- `bson_match` 等高级查询 API 在当前版本（0.114-0）可能不可用
+- 建议使用基础 CRUD API（`create_collection`, `insert_one`, `collection`, `drop_collection`）
 
 ## 常见问题
 
