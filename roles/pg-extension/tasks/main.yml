@@ -13,6 +13,20 @@
       deb [trusted=yes] https://repo.pigsty.io/apt/pgsql/{{ _lsb_release_code.stdout }} {{ _lsb_release_code.stdout }} main
     mode: "0644"
 
+- name: Add PGDG apt key and source (for pgvector and other PGDG-only extensions)
+  ansible.builtin.shell: |
+    install -d /usr/share/postgresql-common/pgdg
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+  args:
+    executable: /bin/bash
+    creates: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+
+- name: Add PGDG apt source
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pgdg.list
+    content: |
+      deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt {{ _lsb_release_code.stdout }}-pgdg main
+    mode: "0644"
 
 - name: Update apt cache
   apt:

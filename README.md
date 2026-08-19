@@ -403,6 +403,10 @@ PGPASSWORD='your-password' ./scripts/kv-cache-test.sh -t bytea
 
 测试覆盖：SET/GET/DEL、UPSERT 覆盖写入、TTL 过期、批量清理、字段级读写、JSON 包含查询、嵌套对象操作。
 
+## 扩展管理
+
+PostgreSQL 扩展的安装和配置详见 [docs/extensions.md](docs/extensions.md)。
+
 ## 注意事项
 
 1. 首次使用请从对应的 `.example` 文件复制并修改。
