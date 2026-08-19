@@ -144,6 +144,7 @@ ansible-playbook -e HOSTS=pg_cluster playbooks/pgdump.yaml \
 | **KV Cache** | `playbooks/kv-cache.yaml` | 部署基于 PG 的 KV 缓存（BYTEA / JSONB 两套方案） | PG 实例已运行 |
 | **SQL 执行** | `playbooks/pgsql.yaml` | 在远程执行 SQL 文件 | PG 实例已运行 |
 | **数据库备份** | `playbooks/pgdump.yaml` | 逻辑备份（pg_dump） | PG 实例已运行 |
+| **Citus** | `playbooks/citus/citus.yaml` | 部署 Citus 分布式集群（coordinator + worker） | 多个 Patroni 单节点，citus 扩展已安装 |
 
 ### pg-ha-cluster（主剧本）
 
@@ -241,6 +242,29 @@ ansible-playbook -i hosts.ini playbooks/pgdump.yaml \
 # custom 格式备份
 ansible-playbook -i hosts.ini playbooks/pgdump.yaml \
   -e _mode=custom -e _db=dev -e _user=dba -e _password=CHANGEME
+```
+
+### citus（分布式 PostgreSQL）
+
+Citus 将多个 PG 单节点组成分布式集群，支持水平分片和多租户。**必须使用 Patroni 单节点**，不能配合 HA 集群。
+
+详细的架构要求、部署步骤、扩容缩容、多租户配置见 [docs/citus.md](docs/citus.md)。
+
+```bash
+# 添加 worker 节点
+ansible-playbook -i hosts.ini playbooks/citus/citus.yaml \
+  -e _coordinator_hostname=pg_single_1 \
+  -e _worker_hostname=pg_single_2 \
+  -e _citus_to_db=dev \
+  -e _pg_user=admin -e _pg_password=admin
+
+# 验证集群状态
+ansible-playbook -i hosts.ini playbooks/citus/citus.yaml \
+  -e _coordinator_hostname=pg_single_1 \
+  -e _worker_hostname=pg_single_2 \
+  -e _citus_to_db=dev \
+  -e _pg_user=admin -e _pg_password=admin \
+  -t verify
 ```
 
 ## 常用 Tag
