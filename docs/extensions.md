@@ -332,7 +332,7 @@ ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t
 
 ```bash
 # 运行 Python 测试脚本（使用 dba 用户通过 pgbouncer 5433 端口测试）
-python3 sql/test_documentdb.py \
+python3 test/test_documentdb.py \
   -H 10.241.21.97 -p 5433 \
   -U dba -W <password> -d postgres
 ```
@@ -420,11 +420,11 @@ ansible pg-single -i hosts.ini -b -a "supervisorctl restart ferretdb-app1"
 mongosh "mongodb://dba:<password>@10.241.21.97:27017/postgres"
 
 # 运行 Python 测试脚本（需要 pymongo: uv add pymongo）
-uv run python3 sql/test_ferretdb.py -H 10.241.21.97 -p 27017 -U dba -W <password>
-uv run python3 sql/test_ferretdb.py -H 10.241.21.97 -p 27018 -U dba -W <password>
+uv run python3 test/test_ferretdb.py -H 10.241.21.97 -p 27017 -U dba -W <password>
+uv run python3 test/test_ferretdb.py -H 10.241.21.97 -p 27018 -U dba -W <password>
 
 # 指定 MongoDB 逻辑数据库名（映射为 PG schema）
-uv run python3 sql/test_ferretdb.py -H 10.241.21.97 -p 27017 -U dba -W <password> -s myapp
+uv run python3 test/test_ferretdb.py -H 10.241.21.97 -p 27017 -U dba -W <password> -s myapp
 ```
 
 **架构**：
