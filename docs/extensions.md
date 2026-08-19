@@ -156,10 +156,19 @@ duckdb_postgres_role: "dba"  # 仅支持单个角色名，不支持逗号分隔�
 
 **3. 本地文件系统访问（read_csv 等）**
 
-非 superuser 使用 `read_csv`、`read_parquet` 等本地文件读取功能，还需要 GRANT PostgreSQL 内置角色：
+非 superuser 使用 `read_csv`、`read_parquet` 等本地文件读取功能，还需要 GRANT PostgreSQL 内置角色。
+
+通过 `postgres_role_grants` 变量声明式配置（推荐，在 `pg_all.yaml` 中）：
+
+```yaml
+postgres_role_grants:
+  - { user: dba, role: pg_read_server_files }
+  - { user: dba, role: pg_write_server_files }
+```
+
+或直接以 superuser 执行：
 
 ```sql
--- 以 superuser (postgres) 执行
 GRANT pg_read_server_files TO dba;
 GRANT pg_write_server_files TO dba;
 ```
@@ -187,12 +196,8 @@ ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t
 # 2. 重启 Patroni 使预加载参数生效
 ansible pg-single -i hosts.ini -b -a "supervisorctl restart patroni"
 
-# 3. 安装扩展并启用
-ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t pg-extension -e pg_create_extensions=true
-
-# 4. 授予文件系统访问权限（以 superuser 执行）
-PGPASSWORD='***' psql -h <host> -p 5432 -U postgres -d <db> \
-  -c "GRANT pg_read_server_files TO dba; GRANT pg_write_server_files TO dba;"
+# 3. 安装扩展并启用（同时执行 initdb 授予 pg_read_server_files 等角色）
+ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t pg-extension,initdb -e pg_create_extensions=true
 ```
 
 **验证**：

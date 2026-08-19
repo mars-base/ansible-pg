@@ -42,3 +42,6 @@ postgres_privs:
     schema: public
     auto_inherit: true     # 是否从创建者角色继承权限
     table_creator: dba     # 表创建者角色
+# 内置角色授予（GRANT role TO user）
+# 用于 pg_read_server_files / pg_write_server_files 等 PG 内置角色
+postgres_role_grants: []

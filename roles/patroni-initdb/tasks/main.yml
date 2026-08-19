@@ -77,6 +77,20 @@
       login_db: postgres
     loop: "{{ postgres_users }}"
 
+  - name: Grant PostgreSQL built-in roles to users
+    community.postgresql.postgresql_membership:
+      group: "{{ item.role }}"
+      target_roles:
+        - "{{ item.user }}"
+      state: present
+      login_user: "{{ postgres_admin }}"
+      login_password: "{{ postgres_admin_password }}"
+      login_host: "{{ postgres_host | default('localhost') }}"
+      login_port: "{{ postgres_port | default(5432) }}"
+      login_db: postgres
+    loop: "{{ postgres_role_grants }}"
+    when: postgres_role_grants | length > 0
+
   - name: Create schema
     community.postgresql.postgresql_schema:
       login_db: "{{ item.db }}"
