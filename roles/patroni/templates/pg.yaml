@@ -130,6 +130,9 @@ postgresql:
     # self added
     shared_preload_libraries: "{{ postgres_shared_preload_libraries }}"
     pg_cron.database: "postgres"  # 可选：设置pg_cron的默认数据库
+{% if duckdb_postgres_role is defined and duckdb_postgres_role %}
+    duckdb.postgres_role: "{{ duckdb_postgres_role }}"
+{% endif %}
 {% if postgres_archive_command is defined and postgres_archive_command %}
     archive_mode: "on"
     archive_timeout: 1800s

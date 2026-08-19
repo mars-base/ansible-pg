@@ -118,6 +118,65 @@ pg_extensions_on:
 
 > 更多扩展见 https://ext.pigsty.io/list/pkg/
 
+## 扩展特殊配置
+
+部分扩展除安装外，还需要在 `group_vars` 中配置额外参数。
+
+### pg_duckdb（DuckDB 嵌入式 OLAP）
+
+pg_duckdb 需要两项额外配置：
+
+**1. shared_preload_libraries 预加载**
+
+在 `postgres_shared_preload_libraries` 中添加 `pg_duckdb`：
+
+```yaml
+postgres_shared_preload_libraries: "pg_cron,pg_stat_statements,uuid-ossp,pg_duckdb"
+```
+
+修改后需重启 Patroni 生效。
+
+**2. duckdb.postgres_role 权限配置**
+
+pg_duckdb 默认只允许 superuser 使用，非 superuser 需要配置 `duckdb.postgres_role` 指定允许的角色：
+
+```yaml
+duckdb_postgres_role: "dba"  # 仅支持单个角色名，不支持逗号分隔多角色
+```
+
+此参数通过 Patroni 的 `postgresql.parameters` 写入 PG 配置（`duckdb.postgres_role = "dba"`），Patroni 模板中对应：
+
+```yaml
+{% if duckdb_postgres_role is defined and duckdb_postgres_role %}
+    duckdb.postgres_role: "{{ duckdb_postgres_role }}"
+{% endif %}
+```
+
+> **注意**：`duckdb.postgres_role` 不支持逗号分隔多角色。配置 `"postgres,dba"` 会被当作一个不存在的角色名，导致所有非 superuser 都无法使用 DuckDB。
+
+**部署步骤**：
+
+```bash
+# 1. 更新 Patroni 配置（写入 shared_preload_libraries + duckdb.postgres_role）
+ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t patroni-config
+
+# 2. 重启 Patroni 使预加载参数生效
+ansible pg-single -i hosts.ini -b -a "supervisorctl restart patroni"
+
+# 3. 安装扩展并启用
+ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t pg-extension -e pg_create_extensions=true
+```
+
+**验证**：
+
+```sql
+-- 使用 DuckDB 查询（dba 用户）
+SELECT * FROM duckdb.query('SELECT 1 + 1 AS result');
+
+-- 使用 DuckDB 读取 CSV 文件
+SELECT count(*) FROM duckdb.read_csv('/data/vm.csv');
+```
+
 ## 常见问题
 
 ### pig install 报 Package has no installation candidate
