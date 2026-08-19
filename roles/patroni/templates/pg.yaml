@@ -72,6 +72,8 @@ bootstrap:
 {% for node in patroni_citus_nodes %}
         - host all all {{ hostvars[node]['private_ip'] }}/32 trust
 {% endfor %}
+        - host all all 127.0.0.1/32 trust  # documentdb 等扩展内部连接 localhost 需要 trust
+        - host all all {{ ansible_default_ipv4.address }}/32 trust  # documentdb 内部连接覆盖 user 为当前 session user
         - host all all 0.0.0.0/0 {{ postgres_hba_auth_method }}
         #- hostssl all all 0.0.0.0/0 md5
       #use_slots: true
@@ -102,7 +104,7 @@ bootstrap:
   # post_init: /usr/local/bin/setup_cluster.sh
 
 postgresql:
-  listen: "{{ ansible_default_ipv4.address }}:5432"
+  listen: "{{ ansible_default_ipv4.address }},127.0.0.1:5432"
   connect_address: "{{ ansible_default_ipv4.address }}:5432"
 
   proxy_address: "{{ ansible_default_ipv4.address }}:5433"  # The address of connection pool (e.g., pgbouncer) running next to Patroni/Postgres. Only for service discovery.
