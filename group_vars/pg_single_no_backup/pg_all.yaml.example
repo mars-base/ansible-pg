@@ -178,7 +178,7 @@ postgres_privs:
 # pgmq 是纯 SQL 扩展，不能放入 shared_preload_libraries
 postgres_shared_preload_libraries: "pg_stat_statements,uuid-ossp,pg_duckdb,pg_documentdb_core,pg_documentdb"
 duckdb_postgres_role: "dba"  # 允许使用 DuckDB 功能的角色（仅支持单角色）
-documentdb_postgres_role: "dba"  # 允许使用 DocumentDB API 的角色
+documentdb_postgres_role: "dba"  # 允许使用 DocumentDB API 的角色（documentdb role 自动授权）
 # 内置角色授予（用于 pg_duckdb 文件系统访问等）
 postgres_role_grants:
   - { user: "{{ postgres_dba_username }}", role: pg_read_server_files }

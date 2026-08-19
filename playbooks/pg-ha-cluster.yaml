@@ -59,6 +59,9 @@
     - role: patroni-initdb
       tags: ["patroni-initdb", "initdb"]
       when: "'patroni' in pg_node_role[inventory_hostname]['roles']"
+    - role: documentdb
+      tags: documentdb
+      when: "'patroni' in pg_node_role[inventory_hostname]['roles']"
     - role: pgbouncer
       tags: pgbouncer
       when: "'pgbouncer' in pg_node_role[inventory_hostname]['roles']"
@@ -71,12 +74,6 @@
     - role: postgrest
       tags: postgrest
       when: "'postgrest' in pg_node_role[inventory_hostname]['roles'] or 'patroni' in pg_node_role[inventory_hostname]['roles']"
-    - role: pgdog
-      tags: pgdog
-      when: "'pgdog' in groups and inventory_hostname in groups['pgdog']"
-    - role: ferretdb
-      tags: ferretdb
-      when: "'ferretdb' in groups and inventory_hostname in groups['ferretdb']"
     - role: pgpitr
       tags: pgpitr
       when: pitr_timestamp is defined and pitr_timestamp != '' and "'patroni' in pg_node_role[inventory_hostname]['roles']"

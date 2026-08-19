@@ -1,0 +1,19 @@
+---
+
+# 部署 pgdog（PostgreSQL 分片代理）
+# 前置条件：pgbouncer 已运行，分片数据库已创建
+#
+# 部署：
+#   ansible-playbook -i hosts.ini playbooks/pgdog.yaml -e HOSTS=pgdog
+#
+# 重启实例：
+#   ansible pgdog -i hosts.ini -b -a "supervisorctl restart pgdog-production"
+
+- name: Deploy pgdog
+  gather_facts: true
+  hosts: "{{ HOSTS | default('pgdog') }}"
+  become: true
+  become_user: root
+  become_method: sudo
+  roles:
+    - role: pgdog

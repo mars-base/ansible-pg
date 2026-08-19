@@ -1,0 +1,22 @@
+---
+# FerretDB 多实例配置（示例）
+# MongoDB wire protocol 代理，通过 pgbouncer 连接 PG 后端（documentdb 扩展）
+# 部署: ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -t ferretdb
+
+ferretdb_host: "{{ ansible_default_ipv4.address }}"
+
+ferretdb_instances:
+  - name: app1
+    listen_port: 27017                # MongoDB 监听端口
+    debug_port: 18088                 # metrics/pprof 端口
+    pg_host: "{{ ansible_default_ipv4.address }}"
+    pg_port: 5433                    # pgbouncer 端口
+    pg_user: "dba"
+    pg_password: "CHANGEME"
+  - name: app2
+    listen_port: 27018
+    debug_port: 18089
+    pg_host: "{{ ansible_default_ipv4.address }}"
+    pg_port: 5433
+    pg_user: "dba"
+    pg_password: "CHANGEME"

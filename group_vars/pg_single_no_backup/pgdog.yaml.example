@@ -1,0 +1,59 @@
+---
+# pgdog 多实例配置（示例）
+# 每个实例运行独立的 pgdog 进程，通过 pgbouncer 连接 PG 后端
+# 部署: ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -t pgdog
+
+pgdog_host: "{{ ansible_default_ipv4.address }}"
+
+pgdog_instances:
+  - name: production
+    port: 6432
+    openmetrics_port: 19090
+    databases:
+      - name: "pgdog"
+        host: "{{ ansible_default_ipv4.address }}"
+        port: 5433
+        database_name: "shard1"
+        shard: 0
+        role: "primary"
+      - name: "pgdog"
+        host: "{{ ansible_default_ipv4.address }}"
+        port: 5433
+        database_name: "shard2"
+        shard: 1
+        role: "primary"
+    users:
+      - database: "pgdog"
+        name: "dba"
+        password: "CHANGEME"
+    sharded_tables:
+      - database: "pgdog"
+        name: "users"
+        column: "id"
+        data_type: "uuid"
+
+  - name: dev
+    port: 6433
+    openmetrics_port: 19091
+    databases:
+      - name: "pgdog"
+        host: "{{ ansible_default_ipv4.address }}"
+        port: 5433
+        database_name: "shard1"
+        shard: 0
+        role: "primary"
+      - name: "pgdog"
+        host: "{{ ansible_default_ipv4.address }}"
+        port: 5433
+        database_name: "shard2"
+        shard: 1
+        role: "primary"
+    users:
+      - database: "pgdog"
+        name: "dba"
+        password: "CHANGEME"
+    sharded_tables:
+      - database: "pgdog"
+        name: "users"
+        column: "id"
+        data_type: "uuid"

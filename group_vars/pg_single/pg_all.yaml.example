@@ -279,7 +279,7 @@ postgres_privs:
 # pig_tool: "https://repo.pigsty.io/pkg/pig/v1.0.0/pig_1.0.0-1_amd64.deb"
 postgres_shared_preload_libraries: "pg_cron,pg_stat_statements,uuid-ossp,pg_duckdb,pg_documentdb_core,pg_documentdb"
 duckdb_postgres_role: "dba"  # 允许使用 DuckDB 功能的角色（仅支持单角色）
-documentdb_postgres_role: "dba"  # 允许使用 DocumentDB API 的角色
+documentdb_postgres_role: "dba"  # 允许使用 DocumentDB API 的角色（documentdb role 自动授权）
 # 内置角色授予（用于 pg_duckdb 文件系统访问等）
 postgres_role_grants:
   - { user: "{{ postgres_dba_username }}", role: pg_read_server_files }

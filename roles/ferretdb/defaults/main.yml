@@ -18,7 +18,6 @@ ferretdb_host: "{{ ansible_default_ipv4.address }}"
 #       pg_port: 5433                    # pgbouncer 端口
 #       pg_user: "dba"                   # PG 用户
 #       pg_password: "secret"            # PG 密码
-#       pg_database: "postgres"          # PG 数据库（documentdb 只能装在 postgres 库）
 #     - name: app2
 #       listen_port: 27018
 #       debug_port: 8089

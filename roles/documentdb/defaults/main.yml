@@ -1,0 +1,4 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/documentdb
+documentdb_postgres_role: ""  # 允许使用 DocumentDB API 的 PG 角色（空则不授权）

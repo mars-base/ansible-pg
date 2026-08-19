@@ -101,7 +101,7 @@
   debug:
     msg: |
       FerretDB instance '{{ item.name }}':
-        MongoDB URI: mongodb://{{ item.pg_user }}:<password>@{{ ferretdb_host }}:{{ item.listen_port }}/{{ item.pg_database }}
+        MongoDB URI: mongodb://{{ item.pg_user }}:<password>@{{ ferretdb_host }}:{{ item.listen_port }}/postgres
         Debug/Metrics: http://127.0.0.1:{{ item.debug_port }}/debug/metrics
   loop: "{{ ferretdb_instances }}"
   loop_control:

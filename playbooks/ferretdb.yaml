@@ -1,0 +1,19 @@
+---
+
+# 部署 FerretDB（MongoDB wire protocol 代理）
+# 前置条件：pg_documentdb 扩展已安装并启用，pgbouncer 已运行
+#
+# 部署：
+#   ansible-playbook -i hosts.ini playbooks/ferretdb.yaml -e HOSTS=ferretdb
+#
+# 重启实例：
+#   ansible ferretdb -i hosts.ini -b -a "supervisorctl restart ferretdb-app1"
+
+- name: Deploy FerretDB
+  gather_facts: true
+  hosts: "{{ HOSTS | default('ferretdb') }}"
+  become: true
+  become_user: root
+  become_method: sudo
+  roles:
+    - role: ferretdb

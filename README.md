@@ -45,7 +45,8 @@
 | **etcd** | DCS（分布式配置存储），保存集群元数据 |
 | **pgbackrest** | 备份服务器，WAL 归档 + 定时全量备份 |
 | **PostgREST** | RESTful API 代理（可选） |
-| **pgdog** | 分片代理（可选，支持多实例） |
+| **pgdog** | 分片代理（可选，支持多实例，独立剧本 `playbooks/pgdog.yaml`） |
+| **FerretDB** | MongoDB wire protocol 代理（可选，支持多实例，独立剧本 `playbooks/ferretdb.yaml`） |
 
 ## 环境准备
 
@@ -148,6 +149,7 @@ ansible-playbook -e HOSTS=pg_cluster playbooks/pgdump.yaml \
 | `pgbackrest` | 部署 pgbackrest |
 | `cron` | 配置定时备份 |
 | `postgrest` | 部署 PostgREST |
+| `documentdb` | 授予 documentdb 扩展权限（需先安装扩展） |
 
 ## 检查各组件状态
 
