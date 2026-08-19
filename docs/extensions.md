@@ -15,13 +15,15 @@
 
 ### pg-single 节点（PostgreSQL 17）
 
-| 扩展 | 版本 | 来源 | 数据库 |
-|------|------|------|--------|
-| pg_cron | 1.6.7 | PGDG | postgres |
-| uuid-ossp | 内置 | contrib | dev, prod |
-| pg_stat_statements | 1.18 | contrib | dev, prod |
-| pgmq | 1.5.1 | Pigsty | dev, prod |
-| pgvector (vector) | 0.8.6 | PGDG | dev, prod |
+| 扩展 | 版本 | 来源 | 数据库 | 备注 |
+|------|------|------|--------|------|
+| pg_cron | 1.6.7 | PGDG | postgres | 定时任务 |
+| uuid-ossp | 内置 | contrib | dev, prod | UUID 生成函数 |
+| pg_stat_statements | 1.18 | contrib | dev, prod | SQL 统计 |
+| pgmq | 1.5.1 | Pigsty | dev, prod | 消息队列 |
+| pgvector (vector) | 0.8.6 | PGDG | dev, prod | 向量搜索 |
+| pg_duckdb | 1.1.0 | Pigsty | dev, prod | DuckDB 嵌入式 OLAP，需 shared_preload_libraries |
+| pgcrypto | 1.3 | contrib | dev, prod | 加密函数（md5/sha/gen_random_bytes 等） |
 
 ## 常用扩展配置
 
@@ -41,6 +43,8 @@ pg_extensions:
   - "pg_stat_statements"   # SQL 统计
   - "pgmq"                 # 消息队列
   - "pgvector"             # 向量搜索（PGDG 源）
+  - "pg_duckdb"            # DuckDB 嵌入式 OLAP（需 shared_preload_libraries）
+  - "pgcrypto"             # 加密函数（md5/sha/gen_random_bytes）
   - "postgis"              # GIS 空间数据（PGDG 源）
   - "timescaledb"          # 时序数据库
   - "citus"                # 分布式数据库
@@ -73,6 +77,14 @@ pg_extensions_on:
   - { db: 'dev', extension: 'vector' }
   - { db: 'prod', extension: 'vector' }
 
+  # DuckDB 嵌入式 OLAP（需 shared_preload_libraries 预加载）
+  - { db: 'dev', extension: 'pg_duckdb' }
+  - { db: 'prod', extension: 'pg_duckdb' }
+
+  # 加密函数
+  - { db: 'dev', extension: 'pgcrypto' }
+  - { db: 'prod', extension: 'pgcrypto' }
+
   # GIS（SQL 扩展名是 postgis）
   - { db: 'dev', extension: 'postgis' }
   - { db: 'prod', extension: 'postgis' }
@@ -91,6 +103,8 @@ pg_extensions_on:
 | `pg_stat_statements` | `pg_stat_statements` | contrib | SQL 统计 |
 | `pgmq` | `pgmq` | Pigsty | 消息队列 |
 | `pgvector` | `vector` | PGDG | 向量搜索 |
+| `pg_duckdb` | `pg_duckdb` | Pigsty | DuckDB 嵌入式 OLAP，需预加载 |
+| `pgcrypto` | `pgcrypto` | contrib | 加密函数（md5/sha/uuid） |
 | `postgis` | `postgis` | PGDG | GIS 空间数据 |
 | `timescaledb` | `timescaledb` | Pigsty | 时序数据库 |
 | `citus` | `citus` | Pigsty | 分布式 |
