@@ -428,6 +428,8 @@ PGPASSWORD=<dba_password> PGUSER=dba PGHOST=<host_ip> PGPORT=5433 PGDATABASE=pos
 | **BYTEA 通用缓存** | `kv_cache` | BYTEA | 通用缓存、二进制数据、序列化对象 |
 | **JSONB 专用缓存** | `kv_cache_json` | JSONB | JSON 对象缓存，支持字段级读写和包含查询 |
 
+详细的函数说明、使用示例和测试方法见 [docs/kv-cache.md](docs/kv-cache.md)。
+
 ### 部署
 
 ```bash
@@ -448,71 +450,6 @@ ansible-playbook -i hosts.ini playbooks/kv-cache.yaml \
 ansible-playbook -i hosts.ini playbooks/kv-cache.yaml \
   -e pg_host=120.24.237.92 -e pg_port=5433 -e pg_user=dba -e pg_password=CHANGEME
 ```
-
-### BYTEA 通用缓存函数
-
-```sql
--- 写入缓存（默认 300s 过期）
-SELECT kv_set('user:123', '{"name":"张三","age":30}', 300);
-SELECT kv_set_with_result('user:123', 'hello world', 60);  -- 返回 BOOLEAN
-
--- 读取缓存
-SELECT kv_get('user:123');          -- 返回 BYTEA
-SELECT kv_get_text('user:123');     -- 返回 TEXT
-
--- 删除缓存
-SELECT kv_del('user:123');
-
--- 批量清理过期数据（每次最多 1000 条）
-SELECT kv_cleanup_batch(1000);      -- 返回实际删除数量
-```
-
-### JSONB 专用缓存函数
-
-```sql
--- 写入 JSON 缓存
-SELECT json_set('user:123', '{"name":"张三","age":18,"active":true}'::jsonb);
-
--- 读取整个 JSON 对象
-SELECT json_get('user:123');
-
--- 读取特定字段
-SELECT json_get_field('user:123', 'name');       -- 返回 TEXT: "张三"
-SELECT json_get_field_json('user:123', 'age');   -- 返回 JSONB: 18
-
--- 包含查询（利用 GIN 索引）
-SELECT json_contains('user:123', '{"age":18}'::jsonb);  -- 返回 BOOLEAN
-
--- 局部更新字段（支持数字/布尔/数组/对象，自动类型转换）
-SELECT json_update_field('user:123', 'age', '25');
-SELECT json_update_field('user:123', 'active', 'false');
-SELECT json_update_field('user:123', 'tags', '["vip","active"]');
-SELECT json_update_field('user:123', 'address', '{"city":"北京"}');
-
--- 删除缓存
-SELECT json_del('user:123');
-
--- 批量清理过期数据
-SELECT json_cleanup_batch(1000);
-```
-
-### E2E 测试
-
-```bash
-# 运行全部测试（默认连接 pg-single）
-PGPASSWORD='your-password' ./scripts/kv-cache-test.sh
-
-# 指定连接参数
-./scripts/kv-cache-test.sh -h 120.24.237.92 -p 5433 -U dba -P 'your-password' -d dev
-
-# 仅测试 JSONB 缓存
-PGPASSWORD='your-password' ./scripts/kv-cache-test.sh -t json
-
-# 仅测试 BYTEA 缓存
-PGPASSWORD='your-password' ./scripts/kv-cache-test.sh -t bytea
-```
-
-测试覆盖：SET/GET/DEL、UPSERT 覆盖写入、TTL 过期、批量清理、字段级读写、JSON 包含查询、嵌套对象操作。
 
 ## 扩展管理
 
