@@ -124,7 +124,7 @@ pg_extensions_on:
 
 ### pg_duckdb（DuckDB 嵌入式 OLAP）
 
-pg_duckdb 需要两项额外配置：
+pg_duckdb 需要多项额外配置：
 
 **1. shared_preload_libraries 预加载**
 
@@ -154,6 +154,30 @@ duckdb_postgres_role: "dba"  # 仅支持单个角色名，不支持逗号分隔�
 
 > **注意**：`duckdb.postgres_role` 不支持逗号分隔多角色。配置 `"postgres,dba"` 会被当作一个不存在的角色名，导致所有非 superuser 都无法使用 DuckDB。
 
+**3. 本地文件系统访问（read_csv 等）**
+
+非 superuser 使用 `read_csv`、`read_parquet` 等本地文件读取功能，还需要 GRANT PostgreSQL 内置角色：
+
+```sql
+-- 以 superuser (postgres) 执行
+GRANT pg_read_server_files TO dba;
+GRANT pg_write_server_files TO dba;
+```
+
+> 不授予这两个角色，非 superuser 调用 `read_csv` 会报错：`Permission Error: File system LocalFileSystem has been disabled by configuration`。
+
+**4. SQL 类型注意事项**
+
+pg_duckdb 返回的数值类型是 `double precision`（FLOAT8），PG 的 `round()` 函数不支持 `(FLOAT8, integer)` 签名，需要先转为 `NUMERIC`：
+
+```sql
+-- 错误：round(double precision, integer) does not exist
+SELECT round(avg(CAST(r['price'] AS FLOAT8)), 2) FROM read_csv('/data/file.csv') r;
+
+-- 正确：转为 NUMERIC
+SELECT round(avg(CAST(r['price'] AS NUMERIC)), 2) FROM read_csv('/data/file.csv') r;
+```
+
 **部署步骤**：
 
 ```bash
@@ -165,6 +189,10 @@ ansible pg-single -i hosts.ini -b -a "supervisorctl restart patroni"
 
 # 3. 安装扩展并启用
 ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t pg-extension -e pg_create_extensions=true
+
+# 4. 授予文件系统访问权限（以 superuser 执行）
+PGPASSWORD='***' psql -h <host> -p 5432 -U postgres -d <db> \
+  -c "GRANT pg_read_server_files TO dba; GRANT pg_write_server_files TO dba;"
 ```
 
 **验证**：
@@ -174,7 +202,13 @@ ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t
 SELECT * FROM duckdb.query('SELECT 1 + 1 AS result');
 
 -- 使用 DuckDB 读取 CSV 文件
-SELECT count(*) FROM duckdb.read_csv('/data/vm.csv');
+SELECT count(*) FROM read_csv('/srv/pgsql/products.csv') r;
+
+-- 运行测试 SQL（playbook 自动同步 test/ 目录到远程 /srv/pgsql/）
+ansible-playbook -i hosts.ini playbooks/pgsql.yaml \
+  -e HOSTS=pg-single -e pg_port=5432 -e pg_user=dba \
+  -e pg_password=<password> -e pg_database=dev \
+  -e sql_file=test_duckdb.sql
 ```
 
 ## 常见问题

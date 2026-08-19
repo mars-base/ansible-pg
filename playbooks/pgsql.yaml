@@ -55,6 +55,12 @@
         dest: "{{ _sql_dir }}/{{ sql_file }}"
         mode: push
 
+    - name: Sync test directory to remote (for CSV data files used by DuckDB etc.)
+      synchronize:
+        src: "{{inventory_dir}}/test/"
+        dest: "{{ _sql_dir }}/"
+        mode: push
+
     - name: Check psql is installed
       stat:
         path: /usr/bin/psql
