@@ -176,12 +176,20 @@ postgres_privs:
 # ----------------------------------------------
 # PostgreSQL 扩展配置
 # pgmq 是纯 SQL 扩展，不能放入 shared_preload_libraries
-postgres_shared_preload_libraries: "pg_stat_statements,uuid-ossp"
+postgres_shared_preload_libraries: "pg_stat_statements,uuid-ossp,pg_duckdb"
+duckdb_postgres_role: "dba"  # 允许使用 DuckDB 功能的角色（仅支持单角色）
+# 内置角色授予（用于 pg_duckdb 文件系统访问等）
+postgres_role_grants:
+  - { user: "{{ postgres_dba_username }}", role: pg_read_server_files }
+  - { user: "{{ postgres_dba_username }}", role: pg_write_server_files }
 
 pg_extensions:
   - "uuid-ossp"
   - "pg_stat_statements"
   - "pgmq"
+  - "pgvector"
+  - "pg_duckdb"
+  - "pgcrypto"
 
 # 部署时自动执行 CREATE EXTENSION（在 primary 节点的 dev/prod 数据库中创建扩展）
 pg_create_extensions: true
@@ -193,3 +201,9 @@ pg_extensions_on:
   - { db: 'prod', extension: 'uuid-ossp' }
   - { db: 'dev',  extension: 'pgmq' }
   - { db: 'prod', extension: 'pgmq' }
+  - { db: 'dev',  extension: 'vector' }  # pgvector 扩展（SQL 名称是 vector）
+  - { db: 'prod', extension: 'vector' }
+  - { db: 'dev',  extension: 'pg_duckdb' }
+  - { db: 'prod', extension: 'pg_duckdb' }
+  - { db: 'dev',  extension: 'pgcrypto' }
+  - { db: 'prod', extension: 'pgcrypto' }
