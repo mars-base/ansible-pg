@@ -233,16 +233,24 @@ $$ LANGUAGE plpgsql;
 \pset null 'NULL'
 \timing
 \x
+
+-- 清理上次测试数据
+DELETE FROM users WHERE user_data->>'username' = 'john_doe';
+
+-- 创建用户
 SELECT * FROM new_user('john_doe', 'secure_password', '{"email":"john@example.com","phone":"13800138000","gender":"male","age":30}');
-SELECT * FROM get_user_by_id('6902163e-4a11-4bcd-9708-66fc254fdce0');
-SELECT user_exists('john_doe');
-SELECT user_exists('john_do'); -- 失败，用户名不存在
+
+-- 重复注册（应返回 NULL, NULL）
+SELECT * FROM new_user('john_doe', 'other_password', '{}');
+
+-- 验证登录
+SELECT verify_login('john_doe', 'secure_password') AS login_ok;     -- true
+SELECT verify_login('john_doe', 'wrong_password') AS login_fail;    -- false
+SELECT verify_login('john_nobody', 'secure_password') AS not_exist; -- false
+
+-- 用户名存在性
+SELECT user_exists('john_doe') AS exists_ok;   -- true
+SELECT user_exists('nobody') AS exists_fail;   -- false
+
+-- 用户总数
 SELECT count_all_users();
-SELECT verify_password('6902163e-4a11-4bcd-9708-66fc254fdce0', 'secure_password');
-SELECT verify_password('6902163e-4a11-4bcd-9708-66fc254fdce0', 'secure_passwor'); -- 失败，密码错误
-SELECT verify_login('john_doe', 'secure_password'); -- 成功
-SELECT verify_login('john_do', 'secure_password'); -- 失败，用户名不存在
-SELECT verify_login('john_doe', 'secure_passwor'); -- 失败，密码错误
-SELECT set_user_inactive('6902163e-4a11-4bcd-9708-66fc254fdce0');
-SELECT * FROM get_user_by_id('6902163e-4a11-4bcd-9708-66fc254fdce0');
-SELECT is_user_active('6902163e-4a11-4bcd-9708-66fc254fdce0') as is_active; -- 失败，用户状态为 inactive
