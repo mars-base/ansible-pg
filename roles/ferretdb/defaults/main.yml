@@ -1,0 +1,26 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for roles/ferretdb
+ferretdb_version: "2.7.0"
+ferretdb_binary_url: "https://github.com/FerretDB/FerretDB/releases/download/v{{ ferretdb_version }}/ferretdb-amd64-linux"
+ferretdb_binary: "/usr/local/bin/ferretdb"
+ferretdb_dir: "/srv/ferretdb"
+ferretdb_host: "{{ ansible_default_ipv4.address }}"
+
+# Multi-instance configuration
+# Each instance runs as an independent ferretdb process with its own MongoDB port and PG backend.
+# Example:
+#   ferretdb_instances:
+#     - name: app1
+#       listen_port: 27017                # MongoDB 监听端口
+#       debug_port: 8088                  # metrics/pprof 端口
+#       pg_host: "127.0.0.1"             # pgbouncer 地址
+#       pg_port: 5433                    # pgbouncer 端口
+#       pg_user: "dba"                   # PG 用户
+#       pg_password: "secret"            # PG 密码
+#       pg_database: "postgres"          # PG 数据库（documentdb 只能装在 postgres 库）
+#     - name: app2
+#       listen_port: 27018
+#       debug_port: 8089
+#       ...
+ferretdb_instances: []

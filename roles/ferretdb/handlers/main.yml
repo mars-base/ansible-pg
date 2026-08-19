@@ -1,0 +1,10 @@
+#SPDX-License-Identifier: MIT-0
+---
+# handlers file for roles/ferretdb
+- name: Restart ferretdb instances
+  shell: >
+    supervisorctl restart ferretdb-{{ item.name }} || true
+  loop: "{{ ferretdb_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: ferretdb_instances | length > 0

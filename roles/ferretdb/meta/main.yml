@@ -1,0 +1,12 @@
+#SPDX-License-Identifier: MIT-0
+---
+galaxy_info:
+  role_name: ferretdb
+  author: fish
+  description: FerretDB - MongoDB wire protocol proxy for PostgreSQL
+  license: MIT
+  min_ansible_version: "2.10"
+  platforms:
+    - name: Debian
+      versions: [bookworm]
+dependencies: []

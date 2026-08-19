@@ -5,6 +5,7 @@ ansible.cfg
 # 包含敏感配置（密码等），请使用 .example 文件或 Ansible Vault 管理
 group_vars/*/pg_all.yaml
 host_vars/*/pgdog.yaml
+host_vars/*/ferretdb.yaml
 host_vars/*/pg_all.yaml
 .idea/
 *.pyc

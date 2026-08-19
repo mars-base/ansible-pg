@@ -1,0 +1,109 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/ferretdb
+# FerretDB: MongoDB wire protocol proxy for PostgreSQL
+# Uses binary download + supervisor management (similar to pgdog pattern)
+
+- name: Check if ferretdb binary exists and version
+  shell: "{{ ferretdb_binary }} --version 2>/dev/null || echo 'not_installed'"
+  register: _ferretdb_version_check
+  changed_when: false
+  failed_when: false
+
+- block:
+  - name: Create ferretdb user
+    ansible.builtin.user:
+      name: ferretdb
+      shell: /usr/sbin/nologin
+      system: true
+
+  - name: Download ferretdb binary
+    get_url:
+      url: "{{ ferretdb_binary_url }}"
+      dest: "{{ ferretdb_binary }}"
+      mode: "0755"
+      owner: root
+      group: root
+    retries: 3
+    delay: 5
+
+  - name: Show ferretdb version
+    shell: "{{ ferretdb_binary }} --version"
+    register: _ferretdb_version_result
+    changed_when: false
+
+  - name: Display ferretdb version
+    debug:
+      msg: "FerretDB version: {{ _ferretdb_version_result.stdout }}"
+
+  when: >
+    _ferretdb_version_check.stdout is search('not_installed') or
+    _ferretdb_version_check.stdout is not search(ferretdb_version)
+
+- name: Create instance directories
+  file:
+    path: "{{ ferretdb_dir }}/{{ item.name }}"
+    state: directory
+    owner: ferretdb
+    group: ferretdb
+    mode: "0755"
+  loop: "{{ ferretdb_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Create instance log directories
+  file:
+    path: "{{ ferretdb_dir }}/{{ item.name }}/logs"
+    state: directory
+    owner: ferretdb
+    group: ferretdb
+    mode: "0755"
+  loop: "{{ ferretdb_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Create supervisor configs for ferretdb instances
+  template:
+    src: "supervisor/ferretdb.conf.j2"
+    dest: "/etc/supervisor/conf.d/ferretdb-{{ item.name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: no
+  loop: "{{ ferretdb_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: "Restart ferretdb instances"
+  tags: ["config"]
+
+- name: Reread and update supervisor
+  shell: >
+    supervisorctl reread &&
+    supervisorctl update
+
+- name: Start ferretdb instances
+  shell: >
+    supervisorctl start ferretdb-{{ item.name }} || true
+  loop: "{{ ferretdb_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Wait for ferretdb instances to start
+  wait_for:
+    host: "{{ ferretdb_host }}"
+    port: "{{ item.listen_port }}"
+    timeout: 30
+  loop: "{{ ferretdb_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Tips for connecting to ferretdb instances
+  debug:
+    msg: |
+      FerretDB instance '{{ item.name }}':
+        MongoDB URI: mongodb://{{ item.pg_user }}:<password>@{{ ferretdb_host }}:{{ item.listen_port }}/{{ item.pg_database }}
+        Debug/Metrics: http://127.0.0.1:{{ item.debug_port }}/debug/metrics
+  loop: "{{ ferretdb_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+    extended: yes
