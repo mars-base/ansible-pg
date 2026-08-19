@@ -57,6 +57,35 @@ ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml \
 
 ## 验证
 
+### 测试脚本（推荐）
+
+```bash
+# 基础测试（hypertable、time_bucket 聚合、按设备统计等）
+python3 test/test_timescaledb.py -H 10.241.21.97 -p 5433 -U dba -W <password> -d tsdb
+
+# Retention Policy 测试（默认保留 30s，验证自动清理）
+python3 test/test_timescaledb.py -H 10.241.21.97 -p 5433 -U dba -W <password> -d tsdb --retention
+
+# 自定义保留时长（如 60s）
+python3 test/test_timescaledb.py -H 10.241.21.97 -p 5433 -U dba -W <password> -d tsdb --retention --rp-seconds 60
+
+# 全部测试（基础 + retention）
+python3 test/test_timescaledb.py -H 10.241.21.97 -p 5433 -U dba -W <password> -d tsdb --all
+```
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `-H` | PG 地址 | `127.0.0.1` |
+| `-p` | PG 端口 | `5433`（pgbouncer） |
+| `-U` | 用户名 | `dba` |
+| `-W` | 密码 | 空 |
+| `-d` | 数据库 | `tsdb` |
+| `--retention` | 运行 Retention Policy 测试 | 不运行 |
+| `--rp-seconds` | 保留时长（秒） | `30` |
+| `--all` | 运行全部测试 | 不运行 |
+
+### 手动 SQL 验证
+
 ```sql
 -- 连接 tsdb 数据库
 \c tsdb
@@ -82,7 +111,37 @@ SELECT time_bucket('1h', time) AS bucket, device_id, avg(temperature)
 FROM conditions
 GROUP BY bucket, device_id
 ORDER BY bucket;
+
+-- Retention Policy：只保留最近 30 天数据
+SELECT add_retention_policy('conditions', INTERVAL '30 days');
+
+-- 查看所有后台 job
+SELECT job_id, proc_name, schedule_interval FROM timescaledb_information.jobs;
+
+-- 手动触发清理
+CALL run_job(<job_id>);
 ```
+
+## Retention Policy（数据保留策略）
+
+设置时间窗口，超出窗口的数据自动按 chunk 粒度删除（DROP chunk，非逐行 DELETE）：
+
+```sql
+-- 保留最近 30 天
+SELECT add_retention_policy('conditions', INTERVAL '30 days');
+
+-- 保留最近 7 天
+SELECT add_retention_policy('conditions', INTERVAL '7 days');
+
+-- 移除策略
+SELECT remove_retention_policy('conditions');
+
+-- 更新策略：必须先移除再重建（重复 add 会报错，if_not_exists => true 不会更新）
+SELECT remove_retention_policy('conditions');
+SELECT add_retention_policy('conditions', INTERVAL '7 days');
+```
+
+> Retention job 默认每天执行一次（`schedule_interval = 1 day`）。可通过 `CALL run_job(<job_id>)` 手动触发。
 
 ## 冲突说明
 
