@@ -134,6 +134,115 @@ ansible-playbook -e HOSTS=pg_cluster playbooks/pgdump.yaml \
   -e _password=CHANGEME
 ```
 
+## 剧本说明
+
+| 剧本 | 文件 | 说明 | 前置条件 |
+|------|------|------|----------|
+| **PG HA 集群** | `playbooks/pg-ha-cluster.yaml` | 部署完整 PG 集群（etcd + Patroni + pgbouncer + pgbackrest + 扩展 + PostgREST 等） | 配置好 group_vars |
+| **pgdog** | `playbooks/pgdog.yaml` | 部署 pgdog 分片代理（多实例，supervisor 管理） | pgbouncer 已运行，分片库已创建 |
+| **FerretDB** | `playbooks/ferretdb.yaml` | 部署 FerretDB MongoDB 协议代理（多实例，supervisor 管理） | pg_documentdb 扩展已安装，pgbouncer 已运行 |
+| **KV Cache** | `playbooks/kv-cache.yaml` | 部署基于 PG 的 KV 缓存（BYTEA / JSONB 两套方案） | PG 实例已运行 |
+| **SQL 执行** | `playbooks/pgsql.yaml` | 在远程执行 SQL 文件 | PG 实例已运行 |
+| **数据库备份** | `playbooks/pgdump.yaml` | 逻辑备份（pg_dump） | PG 实例已运行 |
+
+### pg-ha-cluster（主剧本）
+
+部署完整的 PostgreSQL 高可用集群，包含所有核心组件和扩展：
+
+```bash
+# 全量部署
+ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single
+
+# 按 tag 单独执行
+ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t patroni-config    # 只更新 Patroni 配置
+ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t initdb            # 只初始化数据库/用户/权限
+ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t pg-extension,initdb -e pg_create_extensions=true  # 安装扩展
+ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t pgbouncer          # 只更新 pgbouncer
+ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t documentdb         # 只授权 documentdb 权限
+```
+
+组件部署顺序：py3venv → etcd → haproxy → pg-extension → patroni → patroni-wait → patroni-initdb → documentdb → pgbouncer → pgbackrest → cron → postgrest → pgpitr
+
+### pgdog（分片代理）
+
+独立剧本，部署 PostgreSQL 分片代理。支持多实例配置，由 supervisor 管理：
+
+```bash
+# 部署
+ansible-playbook -i hosts.ini playbooks/pgdog.yaml -e HOSTS=pgdog
+
+# 检查状态
+ansible pg-single -i hosts.ini -b -a "supervisorctl status pgdog-production pgdog-dev"
+```
+
+配置文件：`group_vars/*/pgdog.yaml` 或 `host_vars/*/pgdog.yaml`
+
+### ferretdb（MongoDB 协议代理）
+
+独立剧本，部署 FerretDB（MongoDB wire protocol → PostgreSQL）。支持多实例配置，由 supervisor 管理：
+
+```bash
+# 前置：确保 pg_documentdb 已安装
+ansible-playbook -i hosts.ini playbooks/pg-ha-cluster.yaml -e HOSTS=pg-single -t pg-extension,initdb,documentdb -e pg_create_extensions=true
+
+# 部署 FerretDB
+ansible-playbook -i hosts.ini playbooks/ferretdb.yaml -e HOSTS=ferretdb
+
+# 重启实例
+ansible pg-single -i hosts.ini -b -a "supervisorctl restart ferretdb-app1"
+
+# 验证连接
+mongosh "mongodb://dba:<password>@<host>:27017/myapp"
+```
+
+配置文件：`group_vars/*/ferretdb.yaml` 或 `host_vars/*/ferretdb.yaml`
+
+### kv-cache（KV 缓存）
+
+部署基于 PostgreSQL UNLOGGED TABLE 的缓存方案：
+
+```bash
+# 部署两套缓存（BYTEA + JSONB）
+ansible-playbook -i hosts.ini playbooks/kv-cache.yaml
+
+# 仅部署 JSONB 缓存
+ansible-playbook -i hosts.ini playbooks/kv-cache.yaml -e kv_type=json
+
+# 指定目标主机和数据库
+ansible-playbook -i hosts.ini playbooks/kv-cache.yaml \
+  -e HOSTS=d37-mongo-log -e 'pg_databases=["dev"]'
+```
+
+### pgsql（SQL 执行）
+
+在远程主机上执行 SQL 文件：
+
+```bash
+ansible-playbook -i hosts.ini playbooks/pgsql.yaml \
+  -e HOSTS=pg-single \
+  -e pg_port=5432 \
+  -e pg_user=dba \
+  -e pg_password=CHANGEME \
+  -e pg_database=dev \
+  -e sql_file=test_duckdb.sql
+```
+
+> playbook 会自动同步本地 `test/` 目录到远程 `/srv/pgsql/`。
+
+### pgdump（数据库备份）
+
+逻辑备份（pg_dump），支持 SQL 和 custom 格式：
+
+```bash
+# SQL 格式备份
+ansible-playbook -i hosts.ini playbooks/pgdump.yaml \
+  -e _mode=sql -e _db=dev -e _user=dba -e _password=CHANGEME
+
+# custom 格式备份
+ansible-playbook -i hosts.ini playbooks/pgdump.yaml \
+  -e _mode=custom -e _db=dev -e _user=dba -e _password=CHANGEME
+```
+
 ## 常用 Tag
 
 | Tag | 说明 |
