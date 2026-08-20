@@ -115,7 +115,7 @@
         "id": 4,
         "targets": [
           {
-            "query": "SELECT max(\"total\") FROM (SELECT sum(\"online_count\") AS total FROM \"server_online\" GROUP BY time(5s))",
+            "query": "SELECT max(\"total\") FROM (SELECT sum(\"online_count\") AS total FROM \"server_online\" WHERE $timeFilter GROUP BY time(5s))",
             "rawQuery": true,
             "resultFormat": "time_series"
           }
@@ -200,7 +200,9 @@
         },
         "fieldConfig": {
           "defaults": {
+            "min": 0,
             "thresholds": {
+              "mode": "absolute",
               "steps": [
                 {
                   "color": "green",
@@ -234,13 +236,13 @@
               "lastNotNull"
             ],
             "fields": "",
-            "values": false
+            "values": true
           },
           "showUnfilled": true
         },
         "targets": [
           {
-            "query": "SELECT last(\"online_count\") FROM \"server_online\" WHERE time > now() - 3s GROUP BY \"server_id\"",
+            "query": "SELECT last(\"online_count\") FROM \"server_online\" WHERE time > now() - 5s GROUP BY \"server_id\"",
             "rawQuery": true,
             "resultFormat": "time_series",
             "alias": "$tag_server_id"
