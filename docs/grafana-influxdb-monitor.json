@@ -297,7 +297,7 @@
     },
     "timezone": "browser",
     "title": "游戏服务器在线统计 (InfluxDB)",
-    "uid": "efvqc0m577bb4f"
+    "uid": "influxdb-real"
   },
   "overwrite": true
 }
